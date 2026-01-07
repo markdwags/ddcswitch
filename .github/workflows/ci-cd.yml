@@ -176,5 +176,4 @@ jobs:
           name: DDCSwitch-${{ steps.get_version.outputs.version }}-win-x64
           path: release/
           retention-days: 30
-          retention-days: 30
 
