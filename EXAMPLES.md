@@ -29,6 +29,364 @@ DDCSwitch set 0 HDMI1
 DDCSwitch set 0 DP1
 ```
 
+## JSON Output and Automation
+
+All DDCSwitch commands support the `--json` flag for machine-readable output. This is perfect for scripting, automation, and integration with other tools.
+
+### PowerShell JSON Examples
+
+#### Example 1: Conditional Input Switching
+
+Check the current input and switch only if needed:
+
+```powershell
+# Check if monitor is on HDMI1, switch to DP1 if not
+$result = DDCSwitch get 0 --json | ConvertFrom-Json
+
+if ($result.success -and $result.currentInputCode -ne "0x11") {
+    Write-Host "Monitor is on $($result.currentInput), switching to HDMI1..."
+    DDCSwitch set 0 HDMI1 --json | Out-Null
+} else {
+    Write-Host "Monitor already on HDMI1"
+}
+```
+
+#### Example 2: Switch All Monitors with Error Handling
+
+```powershell
+# Switch all available monitors to HDMI1 with error handling
+$listResult = DDCSwitch list --json | ConvertFrom-Json
+
+if ($listResult.success) {
+    foreach ($monitor in $listResult.monitors) {
+        if ($monitor.status -eq "ok") {
+            Write-Host "Switching $($monitor.name) to HDMI1..."
+            $setResult = DDCSwitch set $monitor.index HDMI1 --json | ConvertFrom-Json
+            
+            if ($setResult.success) {
+                Write-Host "✓ Successfully switched $($monitor.name)" -ForegroundColor Green
+            } else {
+                Write-Host "✗ Failed: $($setResult.error)" -ForegroundColor Red
+            }
+        }
+    }
+} else {
+    Write-Error "Failed to list monitors: $($listResult.error)"
+}
+```
+
+#### Example 3: Monitor Status Dashboard
+
+Create a simple dashboard showing all monitor states:
+
+```powershell
+# monitor-dashboard.ps1
+$result = DDCSwitch list --json | ConvertFrom-Json
+
+if ($result.success) {
+    Write-Host "`n=== Monitor Status Dashboard ===" -ForegroundColor Cyan
+    Write-Host "Total Monitors: $($result.monitors.Count)`n" -ForegroundColor Cyan
+    
+    foreach ($monitor in $result.monitors) {
+        $isPrimary = if ($monitor.isPrimary) { " [PRIMARY]" } else { "" }
+        Write-Host "Monitor $($monitor.index): $($monitor.name)$isPrimary" -ForegroundColor Yellow
+        Write-Host "  Device: $($monitor.deviceName)"
+        Write-Host "  Input: $($monitor.currentInput) ($($monitor.currentInputCode))"
+        Write-Host "  Status: $($monitor.status.ToUpper())"
+        Write-Host ""
+    }
+}
+```
+
+#### Example 4: Toggle Between Two Inputs
+
+```powershell
+# toggle-input.ps1
+param([int]$MonitorIndex = 0)
+
+$result = DDCSwitch get $MonitorIndex --json | ConvertFrom-Json
+
+if ($result.success) {
+    $newInput = if ($result.currentInputCode -eq "0x11") { "DP1" } else { "HDMI1" }
+    $switchResult = DDCSwitch set $MonitorIndex $newInput --json | ConvertFrom-Json
+    
+    if ($switchResult.success) {
+        Write-Host "Toggled from $($result.currentInput) to $($switchResult.newInput)" -ForegroundColor Green
+    }
+}
+```
+
+### Python JSON Examples
+
+#### Example 1: Simple Monitor Switcher
+
+```python
+#!/usr/bin/env python3
+import subprocess
+import json
+import sys
+
+def run_ddc(args):
+    """Run DDCSwitch and return JSON result"""
+    result = subprocess.run(
+        ['DDCSwitch'] + args + ['--json'],
+        capture_output=True,
+        text=True
+    )
+    return json.loads(result.stdout)
+
+def list_monitors():
+    """List all monitors"""
+    data = run_ddc(['list'])
+    if data['success']:
+        for monitor in data['monitors']:
+            primary = " [PRIMARY]" if monitor['isPrimary'] else ""
+            print(f"{monitor['index']}: {monitor['name']}{primary}")
+            print(f"   Current: {monitor['currentInput']} ({monitor['currentInputCode']})")
+    else:
+        print(f"Error: {data['error']}", file=sys.stderr)
+
+def switch_input(monitor_index, input_name):
+    """Switch monitor input"""
+    data = run_ddc(['set', str(monitor_index), input_name])
+    if data['success']:
+        print(f"✓ Switched {data['monitor']['name']} to {data['newInput']}")
+    else:
+        print(f"✗ Error: {data['error']}", file=sys.stderr)
+        sys.exit(1)
+
+# Example usage
+if __name__ == '__main__':
+    list_monitors()
+    # switch_input(0, 'HDMI1')
+```
+
+#### Example 2: Gaming Mode Automation
+
+```python
+#!/usr/bin/env python3
+"""
+Automatically switch monitors based on running applications
+Usage: python gaming_mode.py
+"""
+import subprocess
+import json
+import time
+import psutil
+
+def run_ddc(args):
+    result = subprocess.run(['DDCSwitch'] + args + ['--json'],
+                          capture_output=True, text=True)
+    return json.loads(result.stdout)
+
+def switch_to_gaming():
+    """Switch all monitors to HDMI (console inputs)"""
+    print("🎮 Activating gaming mode...")
+    data = run_ddc(['list'])
+    
+    if data['success']:
+        for monitor in data['monitors']:
+            if monitor['status'] == 'ok':
+                result = run_ddc(['set', str(monitor['index']), 'HDMI1'])
+                if result['success']:
+                    print(f"  ✓ {monitor['name']} → HDMI1")
+
+def switch_to_work():
+    """Switch all monitors to DisplayPort (PC inputs)"""
+    print("💼 Activating work mode...")
+    data = run_ddc(['list'])
+    
+    if data['success']:
+        for monitor in data['monitors']:
+            if monitor['status'] == 'ok':
+                result = run_ddc(['set', str(monitor['index']), 'DP1'])
+                if result['success']:
+                    print(f"  ✓ {monitor['name']} → DP1")
+
+def is_game_running():
+    """Check if specific games are running"""
+    game_processes = ['steam.exe', 'EpicGamesLauncher.exe']
+    for proc in psutil.process_iter(['name']):
+        if proc.info['name'] in game_processes:
+            return True
+    return False
+
+# Monitor and switch automatically
+if __name__ == '__main__':
+    previous_state = None
+    
+    while True:
+        gaming = is_game_running()
+        
+        if gaming != previous_state:
+            if gaming:
+                switch_to_gaming()
+            else:
+                switch_to_work()
+            previous_state = gaming
+        
+        time.sleep(10)  # Check every 10 seconds
+```
+
+### Node.js JSON Examples
+
+#### Example 1: Monitor Information API
+
+```javascript
+// monitor-api.js
+const { execSync } = require('child_process');
+
+class DDCSwitch {
+    static exec(args) {
+        const output = execSync(`DDCSwitch ${args.join(' ')} --json`, {
+            encoding: 'utf-8'
+        });
+        return JSON.parse(output);
+    }
+
+    static listMonitors() {
+        return this.exec(['list']);
+    }
+
+    static getCurrentInput(monitorIndex) {
+        return this.exec(['get', monitorIndex]);
+    }
+
+    static setInput(monitorIndex, input) {
+        return this.exec(['set', monitorIndex, input]);
+    }
+}
+
+// Usage example
+const monitors = DDCSwitch.listMonitors();
+console.log(`Found ${monitors.monitors.length} monitors`);
+
+monitors.monitors.forEach(monitor => {
+    console.log(`${monitor.index}: ${monitor.name} - ${monitor.currentInput}`);
+});
+
+// Switch first monitor to HDMI1
+const result = DDCSwitch.setInput(0, 'HDMI1');
+if (result.success) {
+    console.log(`✓ Switched to ${result.newInput}`);
+}
+```
+
+#### Example 2: Express.js REST API
+
+```javascript
+// server.js - Web API for monitor control
+const express = require('express');
+const { execSync } = require('child_process');
+
+const app = express();
+app.use(express.json());
+
+function runDDC(args) {
+    try {
+        const output = execSync(`DDCSwitch ${args.join(' ')} --json`, {
+            encoding: 'utf-8'
+        });
+        return JSON.parse(output);
+    } catch (error) {
+        return { success: false, error: error.message };
+    }
+}
+
+// GET /monitors - List all monitors
+app.get('/monitors', (req, res) => {
+    const result = runDDC(['list']);
+    res.json(result);
+});
+
+// GET /monitors/:id - Get specific monitor
+app.get('/monitors/:id', (req, res) => {
+    const result = runDDC(['get', req.params.id]);
+    res.json(result);
+});
+
+// POST /monitors/:id/input - Set monitor input
+app.post('/monitors/:id/input', (req, res) => {
+    const { input } = req.body;
+    const result = runDDC(['set', req.params.id, input]);
+    res.json(result);
+});
+
+app.listen(3000, () => {
+    console.log('DDCSwitch API running on http://localhost:3000');
+});
+```
+
+### Batch Script JSON Example
+
+```batch
+@echo off
+REM check-and-switch.bat - Switch only if not already on target input
+
+for /f "delims=" %%i in ('DDCSwitch get 0 --json') do set JSON_OUTPUT=%%i
+
+REM Simple check if contains HDMI1
+echo %JSON_OUTPUT% | find "0x11" >nul
+if errorlevel 1 (
+    echo Switching to HDMI1...
+    DDCSwitch set 0 HDMI1
+) else (
+    echo Already on HDMI1
+)
+```
+
+### Rust JSON Example
+
+```rust
+// monitor_switcher.rs
+use serde::{Deserialize, Serialize};
+use std::process::Command;
+
+#[derive(Debug, Deserialize)]
+struct MonitorInfo {
+    index: u32,
+    name: String,
+    #[serde(rename = "deviceName")]
+    device_name: String,
+    #[serde(rename = "isPrimary")]
+    is_primary: bool,
+    #[serde(rename = "currentInput")]
+    current_input: Option<String>,
+    #[serde(rename = "currentInputCode")]
+    current_input_code: Option<String>,
+    status: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct ListResponse {
+    success: bool,
+    monitors: Option<Vec<MonitorInfo>>,
+    error: Option<String>,
+}
+
+fn main() {
+    let output = Command::new("DDCSwitch")
+        .args(&["list", "--json"])
+        .output()
+        .expect("Failed to execute DDCSwitch");
+
+    let json_str = String::from_utf8_lossy(&output.stdout);
+    let result: ListResponse = serde_json::from_str(&json_str)
+        .expect("Failed to parse JSON");
+
+    if result.success {
+        if let Some(monitors) = result.monitors {
+            for monitor in monitors {
+                println!("{}: {} - {:?}", 
+                    monitor.index, 
+                    monitor.name, 
+                    monitor.current_input);
+            }
+        }
+    }
+}
+```
+
 ## Advanced Examples
 
 ### Multi-Monitor Setup Scripts
@@ -377,7 +735,30 @@ Write-Host "Successfully switched to $Input" -ForegroundColor Green
 ### Pattern 3: Switch All Monitors to Same Input
 
 ```powershell
-# sync-all.ps1
+# sync-all.ps1 - Using JSON for reliable monitor enumeration
+param([string]$Input = "HDMI1")
+
+$result = DDCSwitch list --json | ConvertFrom-Json
+
+if (-not $result.success) {
+    Write-Error $result.error
+    exit 1
+}
+
+$okMonitors = $result.monitors | Where-Object { $_.status -eq "ok" }
+
+foreach ($monitor in $okMonitors) {
+    Write-Host "Switching monitor $($monitor.index) ($($monitor.name)) to $Input..."
+    DDCSwitch set $monitor.index $Input
+    Start-Sleep -Milliseconds 500
+}
+
+Write-Host "Switched $($okMonitors.Count) monitors to $Input" -ForegroundColor Green
+```
+
+**Alternative (without JSON):**
+```powershell
+# sync-all-legacy.ps1
 param([string]$Input = "HDMI1")
 
 $output = DDCSwitch list

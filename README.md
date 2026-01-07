@@ -53,12 +53,75 @@ Example output:
 ╰───────┴─────────────────────┴──────────────┴───────────────────────────┴────────╯
 ```
 
+**JSON Output:**
+
+Add `--json` flag for machine-readable output:
+
+```powershell
+DDCSwitch list --json
+```
+
+Example JSON output:
+```json
+{
+  "success": true,
+  "monitors": [
+    {
+      "index": 0,
+      "name": "Generic PnP Monitor",
+      "deviceName": "\\\\.\\DISPLAY2",
+      "isPrimary": false,
+      "currentInput": "HDMI1",
+      "currentInputCode": "0x11",
+      "status": "ok"
+    },
+    {
+      "index": 1,
+      "name": "VG270U P",
+      "deviceName": "\\\\.\\DISPLAY1",
+      "isPrimary": true,
+      "currentInput": "DisplayPort1 (DP1)",
+      "currentInputCode": "0x0F",
+      "status": "ok"
+    }
+  ]
+}
+```
+
 ### Get Current Input
 
 Get the current input source for a specific monitor:
 
 ```powershell
 DDCSwitch get 0
+```
+
+Example output:
+```
+Monitor: Generic PnP Monitor (\\.\DISPLAY2)
+Current Input: HDMI1 (0x11)
+```
+
+**JSON Output:**
+
+```powershell
+DDCSwitch get 0 --json
+```
+
+Example JSON output:
+```json
+{
+  "success": true,
+  "monitor": {
+    "index": 0,
+    "name": "Generic PnP Monitor",
+    "deviceName": "\\\\.\\DISPLAY2",
+    "isPrimary": false
+  },
+  "currentInput": "HDMI1",
+  "currentInputCode": "0x11",
+  "maxValue": 255
+}
 ```
 
 ### Set Input Source
@@ -75,6 +138,43 @@ DDCSwitch set 2 DVI1
 DDCSwitch set "LG ULTRAGEAR" HDMI2
 ```
 
+Example output:
+```
+✓ Successfully switched Generic PnP Monitor to HDMI1
+```
+
+**JSON Output:**
+
+```powershell
+DDCSwitch set 0 HDMI1 --json
+```
+
+Example JSON output:
+```json
+{
+  "success": true,
+  "monitor": {
+    "index": 0,
+    "name": "Generic PnP Monitor",
+    "deviceName": "\\\\.\\DISPLAY2",
+    "isPrimary": false
+  },
+  "newInput": "HDMI1",
+  "newInputCode": "0x11"
+}
+```
+
+**Error Responses:**
+
+When using `--json`, errors are also returned in JSON format:
+
+```json
+{
+  "success": false,
+  "error": "Monitor '5' not found"
+}
+```
+
 ### Supported Input Names
 
 - **HDMI**: `HDMI1`, `HDMI2`
@@ -85,6 +185,46 @@ DDCSwitch set "LG ULTRAGEAR" HDMI2
 - **Custom codes**: Use hex values like `0x11` for manufacturer-specific inputs
 
 ## Use Cases
+
+### JSON Output for Automation
+
+All commands support `--json` flag for machine-readable output, perfect for scripting and integration:
+
+**PowerShell Script Example:**
+```powershell
+# Check if primary monitor is on HDMI1, switch if not
+$result = DDCSwitch get 0 --json | ConvertFrom-Json
+if ($result.currentInputCode -ne "0x11") {
+    DDCSwitch set 0 HDMI1 --json | Out-Null
+    Write-Host "Switched to HDMI1"
+}
+```
+
+**Python Script Example:**
+```python
+import subprocess
+import json
+
+# Get monitor information
+result = subprocess.run(['DDCSwitch', 'list', '--json'], capture_output=True, text=True)
+data = json.loads(result.stdout)
+
+# Switch all monitors to HDMI1
+for monitor in data['monitors']:
+    if monitor['status'] == 'ok':
+        subprocess.run(['DDCSwitch', 'set', str(monitor['index']), 'HDMI1'])
+```
+
+**Node.js Script Example:**
+```javascript
+const { execSync } = require('child_process');
+
+// Get current input
+const output = execSync('DDCSwitch get 0 --json', { encoding: 'utf-8' });
+const data = JSON.parse(output);
+
+console.log(`Monitor ${data.monitor.name} is on ${data.currentInput}`);
+```
 
 ### Windows Shortcuts
 

@@ -1,4 +1,4 @@
-﻿﻿# Changelog
+﻿# Changelog
 
 All notable changes to DDCSwitch will be documented in this file.
 
@@ -36,6 +36,7 @@ All notable changes to DDCSwitch will be documented in this file.
 - Windows x64 only
 - P/Invoke wrappers for dxva2.dll and user32.dll
 - MCCS VCP code compliance
+- Native AOT JSON serialization using System.Text.Json source generators
 - Optimized release build (~19 MB)
 
 #### Known Limitations
