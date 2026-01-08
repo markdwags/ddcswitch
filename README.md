@@ -26,6 +26,20 @@ A Windows command-line utility to control monitor settings via DDC/CI (Display D
 
 ## Installation
 
+### Chocolatey (Recommended)
+
+Install via [Chocolatey](https://chocolatey.org/) package manager:
+
+```powershell
+choco install ddcswitch
+```
+
+To upgrade to the latest version:
+
+```powershell
+choco upgrade ddcswitch
+```
+
 ### Pre-built Binary
 
 Download the latest release from the [Releases](../../releases) page and extract `ddcswitch.exe` to a folder in your PATH.
