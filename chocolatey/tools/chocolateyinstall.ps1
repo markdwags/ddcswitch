@@ -7,10 +7,8 @@ $toolsDir = "$(Split-Path -parent $MyInvocation.MyCommand.Definition)"
 $version = $env:chocolateyPackageVersion
 $url64 = "https://github.com/markdwags/ddcswitch/releases/download/v$version/ddcswitch-$version-win-x64.zip"
 
-# Checksum is stored in a separate file created during package build
-$checksumFile = Join-Path $toolsDir "CHECKSUM"
-$checksum64 = Get-Content $checksumFile -Raw
-$checksum64 = $checksum64.Trim()
+# Checksum must be embedded in the script for Chocolatey validation
+$checksum64 = '__CHECKSUM__'
 $checksumType64 = 'sha256'
 
 $packageArgs = @{

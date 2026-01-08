@@ -237,15 +237,15 @@ jobs:
           # Update version in nuspec (Chocolatey will pass to scripts via $env:chocolateyPackageVersion)
           (Get-Content chocolatey\ddcswitch.nuspec -Raw) -replace '__VERSION__', $version | Set-Content chocolatey\ddcswitch.nuspec -NoNewline
           
-          # Create CHECKSUM file for install script to read
-          Set-Content chocolatey\tools\CHECKSUM $checksum -NoNewline
+          # Embed checksum directly in install script (required by Chocolatey validation CPMR0073)
+          (Get-Content chocolatey\tools\chocolateyinstall.ps1 -Raw) -replace '__CHECKSUM__', $checksum | Set-Content chocolatey\tools\chocolateyinstall.ps1 -NoNewline
           
           # Update VERIFICATION.txt for moderators
           (Get-Content chocolatey\tools\VERIFICATION.txt -Raw) -replace '__VERSION__', $version -replace '__CHECKSUM__', $checksum | Set-Content chocolatey\tools\VERIFICATION.txt -NoNewline
           
           Write-Host "✓ Updated Chocolatey files"
           Write-Host "  Version: $version (in nuspec, passed via env to scripts)"
-          Write-Host "  Checksum: $checksum (in CHECKSUM file)"
+          Write-Host "  Checksum: $checksum (embedded in chocolateyinstall.ps1)"
 
       - name: Install Chocolatey
         shell: pwsh

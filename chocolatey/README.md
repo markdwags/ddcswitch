@@ -11,51 +11,56 @@ This directory contains the files needed to create a Chocolatey package for ddcs
 
 ## Building the Package Locally
 
-**Note**: The version and checksum are automatically populated by the CI/CD pipeline from `CHANGELOG.md`.
+**Note**: The version and checksum are automatically populated from `CHANGELOG.md` and GitHub releases.
 
 - **Version**: Set in `ddcswitch.nuspec` as `__VERSION__` placeholder, then passed to PowerShell via `$env:chocolateyPackageVersion`
-- **Checksum**: Set in `chocolateyinstall.ps1` as `__CHECKSUM__` placeholder
+- **Checksum**: Embedded directly in `chocolateyinstall.ps1` as `__CHECKSUM__` placeholder (required by Chocolatey validation)
+
+### Prerequisites
 
 1. Install Chocolatey if you haven't already:
    ```powershell
    Set-ExecutionPolicy Bypass -Scope Process -Force; [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072; iex ((New-Object System.Net.WebClient).DownloadString('https://community.chocolatey.org/install.ps1'))
    ```
 
-2. If building manually (for testing), replace the placeholders:
-   - Replace `__VERSION__` in `ddcswitch.nuspec` (e.g., `1.0.2`)
-   - Replace `__CHECKSUM__` in `tools/chocolateyinstall.ps1` with the SHA256 checksum
+### Using the Build Script (Recommended)
 
-3. Build the package:
-   ```powershell
-   cd chocolatey
-   choco pack
-   ```
-
-4. Test the package locally:
-   ```powershell
-   choco install ddcswitch -s . --force
-   ddcswitch --version
-   choco uninstall ddcswitch
-   ```
-
-## Getting the Checksum
-
-After a GitHub release is created, calculate the SHA256 checksum:
+The easiest way to build the package is using the provided script:
 
 ```powershell
-$version = "1.0.2"  # Update this
-$url = "https://github.com/markdwags/DDCSwitch/releases/download/v$version/ddcswitch-$version-win-x64.zip"
-$tempFile = "$env:TEMP\ddcswitch.zip"
-Invoke-WebRequest -Uri $url -OutFile $tempFile
-$hash = Get-FileHash $tempFile -Algorithm SHA256
-$checksum = $hash.Hash
-Write-Host "SHA256: $checksum"
+# Build from the latest version in CHANGELOG.md (downloads from GitHub releases)
+.\build-chocolatey.ps1
 
-# Create the CHECKSUM file
-Set-Content chocolatey\tools\CHECKSUM $checksum -NoNewline
+# Build a specific version
+.\build-chocolatey.ps1 -Version 1.0.2
 
-Remove-Item $tempFile
+# Build using a local ZIP file (useful before pushing to GitHub)
+.\build-chocolatey.ps1 -LocalZip "dist\ddcswitch-1.0.2-win-x64.zip"
 ```
+
+The script will:
+1. Extract the version from CHANGELOG.md (or use the specified version)
+2. Download the release ZIP from GitHub (or use the local file)
+3. Calculate the SHA256 checksum
+4. Replace placeholders in nuspec and install script
+5. Build the .nupkg package
+
+### Testing the Package
+
+After building:
+
+```powershell
+# Install locally
+choco install ddcswitch -s . --force
+
+# Test it works
+ddcswitch --version
+ddcswitch list
+
+# Uninstall
+choco uninstall ddcswitch
+```
+
 
 ## Automated Package Creation
 
