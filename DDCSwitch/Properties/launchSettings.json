@@ -23,6 +23,10 @@
     "DDCSwitch (help)": {
       "commandName": "Project",
       "commandLineArgs": "help"
+    },
+    "DDCSwitch (error command)": {
+      "commandName": "Project",
+      "commandLineArgs": "gettt"
     }
   }
 }

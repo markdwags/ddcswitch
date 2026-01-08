@@ -21,9 +21,9 @@ internal static class HelpCommand
         }
         else
         {
-            AnsiConsole.Write(new FigletText("DDCSwitch").Color(Color.Blue));
-            AnsiConsole.MarkupLine($"[bold]Version:[/] [green]{version}[/]");
-            AnsiConsole.MarkupLine("[dim]Windows DDC/CI Monitor Input Switcher[/]");
+            AnsiConsole.Write(new FigletText("DDCSwitch").Color(Color.Cyan1));
+            AnsiConsole.MarkupLine($"[bold cyan]Version:[/] [green]{version}[/]");
+            AnsiConsole.MarkupLine("[dim italic]>> Windows DDC/CI Monitor Input Switcher[/]");
         }
 
         return 0;
@@ -33,19 +33,63 @@ internal static class HelpCommand
     {
         var version = GetVersion();
 
-        AnsiConsole.Write(new FigletText("DDCSwitch").Color(Color.Blue));
-        AnsiConsole.MarkupLine($"[dim]Windows DDC/CI Monitor Input Switcher v{version}[/]\n");
+        AnsiConsole.Write(new FigletText("DDCSwitch").Color(Color.Cyan1));
+        AnsiConsole.MarkupLine($"[bold white]{version}[/]");
+        AnsiConsole.MarkupLine($"[dim italic]>> A Windows command-line utility to control monitors using DDC/CI[/]\n");
 
-        AnsiConsole.MarkupLine("[yellow]Commands:[/]");
-        AnsiConsole.WriteLine("  list [--verbose] [--scan] - List all DDC/CI capable monitors");
-        AnsiConsole.WriteLine("  get monitor [feature] - Get current value for a monitor feature or scan all features");
-        AnsiConsole.MarkupLine("  set monitor feature value - Set value for a monitor feature");
-        AnsiConsole.MarkupLine("  version - Display version information");
+        var commandsTable = new Table()
+            .Border(TableBorder.Rounded)
+            .BorderColor(Color.White)
+            .AddColumn(new TableColumn("[bold yellow]Command[/]").LeftAligned())
+            .AddColumn(new TableColumn("[bold yellow]Description[/]").LeftAligned());
+
+        commandsTable.AddRow(
+            "[cyan]list[/] [dim]or[/] [cyan]ls[/]",
+            "List all DDC/CI capable monitors with current input sources");
+        commandsTable.AddRow(
+            "[cyan]list --verbose[/]",
+            "Include brightness and contrast information");
+        commandsTable.AddRow(
+            "[cyan]list --scan[/]",
+            "Enumerate all supported VCP features for each monitor");
+        commandsTable.AddRow(
+            "[cyan]get[/] [green]<monitor>[/] [blue][[feature]][/]",
+            "Get current value for a monitor feature or get all features");
+        commandsTable.AddRow(
+            "[cyan]set[/] [green]<monitor>[/] [blue]<feature>[/] [magenta]<value>[/]",
+            "Set value for a monitor feature");
+        commandsTable.AddRow(
+            "[cyan]version[/] [dim]or[/] [cyan]-v[/]",
+            "Display version information");
+        commandsTable.AddRow(
+            "[cyan]help[/] [dim]or[/] [cyan]-h[/]",
+            "Show this help message");
+
+        AnsiConsole.Write(commandsTable);
+
+        AnsiConsole.WriteLine();
         
-        AnsiConsole.MarkupLine("\nSupported features: brightness, contrast, input, or VCP codes like 0x10");
-        AnsiConsole.MarkupLine("Use [yellow]--json[/] flag for JSON output");
-        AnsiConsole.MarkupLine("Use [yellow]--verbose[/] flag with list to include brightness and contrast");
-        AnsiConsole.MarkupLine("Use [yellow]--scan[/] flag with list to enumerate all VCP codes");
+        var panel = new Panel(
+            "[bold yellow]Features:[/] brightness, contrast, input, or VCP codes like [cyan]0x10[/]\n" +
+            "[bold yellow]Flags:[/]\n" +
+            "  [cyan]--json[/]    Machine-readable JSON output for automation\n" +
+            "  [cyan]--verbose[/] Include detailed information in list command\n" +
+            "  [cyan]--all[/]    Enumerate all VCP features in list command")
+        {
+            Header = new PanelHeader("[bold green]>> Quick Reference[/]", Justify.Left),
+            Border = BoxBorder.Rounded,
+            BorderStyle = new Style(Color.Green)
+        };
+        
+        AnsiConsole.Write(panel);
+
+        AnsiConsole.WriteLine();
+        AnsiConsole.MarkupLine("[dim]Examples:[/]");
+        AnsiConsole.MarkupLine("  [grey]$[/] DDCSwitch list");
+        AnsiConsole.MarkupLine("  [grey]$[/] DDCSwitch get 0");
+        AnsiConsole.MarkupLine("  [grey]$[/] DDCSwitch get 0 brightness");
+        AnsiConsole.MarkupLine("  [grey]$[/] DDCSwitch set 0 input HDMI1");
+        AnsiConsole.MarkupLine("  [grey]$[/] DDCSwitch set 1 brightness 75%");
 
         return 0;
     }

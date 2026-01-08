@@ -141,6 +141,7 @@ internal static class GetCommand
                 .Start($"Reading {feature.Name} from {monitor.Name}...", ctx =>
                 {
                     ctx.Spinner(Spinner.Known.Dots);
+                    ctx.SpinnerStyle(Style.Parse("cyan"));
                     success = monitor.TryGetVcpFeature(feature.Code, out current, out max, out errorCode);
                 });
         }
@@ -205,23 +206,39 @@ internal static class GetCommand
         }
         else
         {
-            AnsiConsole.MarkupLine($"[green]Monitor:[/] {monitor.Name} ({monitor.DeviceName})");
+            var panel = new Panel(
+                $"[bold cyan]Monitor:[/] {monitor.Name}\n" +
+                $"[dim]Device:[/] [dim]{monitor.DeviceName}[/]")
+            {
+                Header = new PanelHeader($"[bold green]>> Feature Value[/]", Justify.Left),
+                Border = BoxBorder.Rounded,
+                BorderStyle = new Style(Color.Cyan)
+            };
+            AnsiConsole.Write(panel);
             
             if (feature.Code == InputSource.VcpInputSource)
             {
                 // Display input with name resolution
-                AnsiConsole.MarkupLine($"[green]Current {feature.Name}:[/] {InputSource.GetName(current)} (0x{current:X2})");
+                var inputName = InputSource.GetName(current);
+                AnsiConsole.MarkupLine($"  [bold yellow]{feature.Name}:[/] [cyan]{inputName}[/] [dim](0x{current:X2})[/]");
             }
             else if (feature.SupportsPercentage)
             {
                 // Display percentage for brightness/contrast
                 uint percentage = FeatureResolver.ConvertRawToPercentage(current, max);
-                AnsiConsole.MarkupLine($"[green]Current {feature.Name}:[/] {percentage}% (raw: {current}/{max})");
+                var progressBar = new BarChart()
+                    .Width(40)
+                    .Label($"[bold yellow]{feature.Name}[/]")
+                    .CenterLabel()
+                    .AddItem("", percentage, Color.Green);
+                
+                AnsiConsole.Write(progressBar);
+                AnsiConsole.MarkupLine($"  [bold green]{percentage}%[/] [dim](raw: {current}/{max})[/]");
             }
             else
             {
                 // Display raw values for unknown VCP codes
-                AnsiConsole.MarkupLine($"[green]Current {feature.Name}:[/] {current} (max: {max})");
+                AnsiConsole.MarkupLine($"  [bold yellow]{feature.Name}:[/] [green]{current}[/] [dim](max: {max})[/]");
             }
         }
     }

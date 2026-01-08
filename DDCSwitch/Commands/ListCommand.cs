@@ -16,6 +16,7 @@ internal static class ListCommand
                 .Start(scanOutput ? "Scanning VCP features..." : "Enumerating monitors...", ctx =>
                 {
                     ctx.Spinner(Spinner.Known.Dots);
+                    ctx.SpinnerStyle(Style.Parse("cyan"));
                     monitors = MonitorController.EnumerateMonitors();
                 });
         }
@@ -141,46 +142,48 @@ internal static class ListCommand
     {
         var table = new Table()
             .Border(TableBorder.Rounded)
-            .AddColumn("Index")
-            .AddColumn("Monitor Name")
-            .AddColumn("Device")
-            .AddColumn("Current Input");
+            .BorderColor(Color.White)
+            .AddColumn(new TableColumn("[bold yellow]Index[/]").Centered())
+            .AddColumn(new TableColumn("[bold yellow]Monitor Name[/]").LeftAligned())
+            .AddColumn(new TableColumn("[bold yellow]Device[/]").LeftAligned())
+            .AddColumn(new TableColumn("[bold yellow]Current Input[/]").LeftAligned());
 
         // Add brightness and contrast columns if verbose mode is enabled
         if (verboseOutput)
         {
-            table.AddColumn("Brightness");
-            table.AddColumn("Contrast");
+            table.AddColumn(new TableColumn("[bold yellow]Brightness[/]").Centered());
+            table.AddColumn(new TableColumn("[bold yellow]Contrast[/]").Centered());
         }
 
-        table.AddColumn("Status");
+        table.AddColumn(new TableColumn("[bold yellow]Status[/]").Centered());
 
         foreach (var monitor in monitors)
         {
-            string inputInfo = "N/A";
-            string status = "[green]OK[/]";
-            string brightnessInfo = "N/A";
-            string contrastInfo = "N/A";
+            string inputInfo = "[dim]N/A[/]";
+            string status = "[green]+[/] [bold green]OK[/]";
+            string brightnessInfo = "[dim]N/A[/]";
+            string contrastInfo = "[dim]N/A[/]";
 
             try
             {
                 if (monitor.TryGetInputSource(out uint current, out _))
                 {
-                    inputInfo = $"{InputSource.GetName(current)} (0x{current:X2})";
+                    var inputName = InputSource.GetName(current);
+                    inputInfo = $"[cyan]{inputName}[/] [dim](0x{current:X2})[/]";
                 }
                 else
                 {
-                    status = "[yellow]No DDC/CI[/]";
+                    status = "[yellow]~[/] [bold yellow]No DDC/CI[/]";
                 }
 
                 // Get brightness and contrast if verbose mode is enabled and monitor supports DDC/CI
-                if (verboseOutput && status == "[green]OK[/]")
+                if (verboseOutput && status == "[green]+[/] [bold green]OK[/]")
                 {
                     // Try to get brightness (VCP 0x10)
                     if (monitor.TryGetVcpFeature(VcpFeature.Brightness.Code, out uint brightnessCurrent, out uint brightnessMax))
                     {
                         uint brightnessPercentage = FeatureResolver.ConvertRawToPercentage(brightnessCurrent, brightnessMax);
-                        brightnessInfo = $"{brightnessPercentage}%";
+                        brightnessInfo = $"[green]{brightnessPercentage}%[/]";
                     }
                     else
                     {
@@ -191,7 +194,7 @@ internal static class ListCommand
                     if (monitor.TryGetVcpFeature(VcpFeature.Contrast.Code, out uint contrastCurrent, out uint contrastMax))
                     {
                         uint contrastPercentage = FeatureResolver.ConvertRawToPercentage(contrastCurrent, contrastMax);
-                        contrastInfo = $"{contrastPercentage}%";
+                        contrastInfo = $"[green]{contrastPercentage}%[/]";
                     }
                     else
                     {
@@ -206,7 +209,7 @@ internal static class ListCommand
             }
             catch
             {
-                status = "[red]Error[/]";
+                status = "[red]X[/] [bold red]Error[/]";
                 if (verboseOutput)
                 {
                     brightnessInfo = "[dim]N/A[/]";
@@ -216,9 +219,9 @@ internal static class ListCommand
 
             var row = new List<string>
             {
-                monitor.IsPrimary ? $"{monitor.Index} [yellow]*[/]" : monitor.Index.ToString(),
+                monitor.IsPrimary ? $"[bold cyan]{monitor.Index}[/] [yellow]*[/]" : $"[cyan]{monitor.Index}[/]",
                 monitor.Name,
-                monitor.DeviceName,
+                $"[dim]{monitor.DeviceName}[/]",
                 inputInfo
             };
 

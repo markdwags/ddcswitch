@@ -36,6 +36,7 @@ internal static class VcpScanCommand
                 .Start("Enumerating monitors...", ctx =>
                 {
                     ctx.Spinner(Spinner.Known.Dots);
+                    ctx.SpinnerStyle(Style.Parse("cyan"));
                     monitors = MonitorController.EnumerateMonitors();
                 });
         }
@@ -97,6 +98,7 @@ internal static class VcpScanCommand
                     .Start($"Scanning VCP features for {monitor.Name}...", ctx =>
                     {
                         ctx.Spinner(Spinner.Known.Dots);
+                        ctx.SpinnerStyle(Style.Parse("cyan"));
                         features = monitor.ScanVcpFeatures();
                     });
             }
@@ -186,13 +188,19 @@ internal static class VcpScanCommand
         {
             try
             {
-                AnsiConsole.MarkupLine($"\n[bold blue]Monitor {monitor.Index}: {monitor.Name}[/] ({monitor.DeviceName})");
+                var rule = new Rule($"[bold cyan]Monitor {monitor.Index}: {monitor.Name}[/] [dim]({monitor.DeviceName})[/]")
+                {
+                    Justification = Justify.Left,
+                    Style = new Style(Color.Cyan)
+                };
+                AnsiConsole.Write(rule);
                 
                 Dictionary<byte, VcpFeatureInfo> features = null!;
                 AnsiConsole.Status()
                     .Start($"Scanning VCP features for {monitor.Name}...", ctx =>
                     {
                         ctx.Spinner(Spinner.Known.Dots);
+                        ctx.SpinnerStyle(Style.Parse("cyan"));
                         features = monitor.ScanVcpFeatures();
                     });
                 
@@ -203,15 +211,19 @@ internal static class VcpScanCommand
 
                 if (supportedFeatures.Count == 0)
                 {
-                    AnsiConsole.MarkupLine("[yellow]  No supported VCP features found[/]");
+                    ConsoleOutputFormatter.WriteWarning("No supported VCP features found");
+                    AnsiConsole.WriteLine();
                     continue;
                 }
 
+                AnsiConsole.MarkupLine($"[bold green]>> Found {supportedFeatures.Count} supported features[/]\n");
                 OutputFeatureTable(supportedFeatures);
+                AnsiConsole.WriteLine();
             }
             catch (Exception ex)
             {
                 ConsoleOutputFormatter.WriteError($"Error scanning monitor {monitor.Index} ({monitor.Name}): {ex.Message}");
+                AnsiConsole.WriteLine();
             }
         }
     }
@@ -224,11 +236,20 @@ internal static class VcpScanCommand
 
     private static void OutputTableScanSingle(Monitor monitor, List<VcpFeatureInfo> supportedFeatures)
     {
-        AnsiConsole.MarkupLine($"[bold blue]Monitor {monitor.Index}: {monitor.Name}[/] ({monitor.DeviceName})");
+        var panel = new Panel(
+            $"[bold cyan]Monitor:[/] {monitor.Name}\n" +
+            $"[dim]Device:[/] [dim]{monitor.DeviceName}[/]\n" +
+            $"[bold yellow]Supported Features:[/] [green]{supportedFeatures.Count}[/]")
+        {
+            Header = new PanelHeader($"[bold cyan]>> VCP Feature Scan Results[/]", Justify.Left),
+            Border = BoxBorder.Rounded,
+            BorderStyle = new Style(Color.White)
+        };
+        AnsiConsole.Write(panel);
         
         if (supportedFeatures.Count == 0)
         {
-            AnsiConsole.MarkupLine("[yellow]  No supported VCP features found[/]");
+            ConsoleOutputFormatter.WriteWarning("No supported VCP features found");
         }
         else
         {
@@ -240,36 +261,36 @@ internal static class VcpScanCommand
     {
         var table = new Table()
             .Border(TableBorder.Rounded)
-            .AddColumn("VCP Code")
-            .AddColumn("Feature Name")
-            .AddColumn("Access Type")
-            .AddColumn("Current Value")
-            .AddColumn("Max Value")
-            .AddColumn("Percentage");
+            .BorderColor(Color.White)
+            .AddColumn(new TableColumn("[bold yellow]VCP Code[/]").Centered())
+            .AddColumn(new TableColumn("[bold yellow]Feature Name[/]").LeftAligned())
+            .AddColumn(new TableColumn("[bold yellow]Access[/]").Centered())
+            .AddColumn(new TableColumn("[bold yellow]Current[/]").RightAligned())
+            .AddColumn(new TableColumn("[bold yellow]Max[/]").RightAligned());
 
         foreach (var feature in supportedFeatures)
         {
-            string vcpCode = $"0x{feature.Code:X2}";
+            string vcpCode = $"[cyan]0x{feature.Code:X2}[/]";
             string accessType = feature.Type switch
             {
-                VcpFeatureType.ReadOnly => "[yellow]Read-Only[/]",
-                VcpFeatureType.WriteOnly => "[red]Write-Only[/]",
-                VcpFeatureType.ReadWrite => "[green]Read-Write[/]",
-                _ => "[dim]Unknown[/]"
+                VcpFeatureType.ReadOnly => "[yellow]Read Only[/]",
+                VcpFeatureType.WriteOnly => "[red]Write Only[/]",
+                VcpFeatureType.ReadWrite => "[green]Read+Write[/]",
+                _ => "[dim]? ?[/]"
             };
 
-            string currentValue = feature.CurrentValue.ToString();
-            string maxValue = feature.MaxValue.ToString();
+            string currentValue = $"[green]{feature.CurrentValue}[/]";
+            string maxValue = $"[cyan]{feature.MaxValue}[/]";
             
-            // Calculate percentage for known percentage-based features
-            string percentage = "N/A";
-            if ((feature.Code == VcpFeature.Brightness.Code || feature.Code == VcpFeature.Contrast.Code) && feature.MaxValue > 0)
+            var name = feature.Name;
+            
+            // If the feature name isn't known, make it dim
+            if (feature.Name.StartsWith("VCP_"))
             {
-                uint percentageValue = FeatureResolver.ConvertRawToPercentage(feature.CurrentValue, feature.MaxValue);
-                percentage = $"{percentageValue}%";
+                name = $"[dim]{feature.Name}[/]";
             }
 
-            table.AddRow(vcpCode, feature.Name, accessType, currentValue, maxValue, percentage);
+            table.AddRow(vcpCode, name, accessType, currentValue, maxValue);
         }
 
         AnsiConsole.Write(table);

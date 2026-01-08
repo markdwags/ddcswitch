@@ -285,6 +285,7 @@ internal static class SetCommand
                 .Start($"Setting {monitor.Name} {feature.Name} to {displayValue}...", ctx =>
                 {
                     ctx.Spinner(Spinner.Known.Dots);
+                    ctx.SpinnerStyle(Style.Parse("cyan"));
 
                     if (!monitor.TrySetVcpFeature(feature.Code, setValue, out int errorCode))
                     {
@@ -367,21 +368,34 @@ internal static class SetCommand
         }
         else
         {
+            string displayValue;
             if (feature.Code == InputSource.VcpInputSource)
             {
                 // Display input with name resolution
-                ConsoleOutputFormatter.WriteSuccess($"Successfully set {monitor.Name} {feature.Name} to {InputSource.GetName(setValue)}");
+                displayValue = $"[cyan]{InputSource.GetName(setValue)}[/]";
             }
             else if (percentageValue.HasValue)
             {
                 // Display percentage for brightness/contrast
-                ConsoleOutputFormatter.WriteSuccess($"Successfully set {monitor.Name} {feature.Name} to {percentageValue}%");
+                displayValue = $"[green]{percentageValue}%[/]";
             }
             else
             {
                 // Display raw value for unknown VCP codes
-                ConsoleOutputFormatter.WriteSuccess($"Successfully set {monitor.Name} {feature.Name} to {setValue}");
+                displayValue = $"[green]{setValue}[/]";
             }
+
+            var successPanel = new Panel(
+                $"[bold cyan]Monitor:[/] {monitor.Name}\n" +
+                $"[bold yellow]Feature:[/] {feature.Name}\n" +
+                $"[bold green]New Value:[/] {displayValue}")
+            {
+                Header = new PanelHeader("[bold green]>> Successfully Applied[/]", Justify.Left),
+                Border = BoxBorder.Rounded,
+                BorderStyle = new Style(Color.Green)
+            };
+            
+            AnsiConsole.Write(successPanel);
         }
     }
 }

@@ -99,6 +99,14 @@ DDCSwitch get 0
 
 This will scan and display all supported VCP features for monitor 0, showing their names, access types, current values, and maximum values.
 
+You can also use the monitor name instead of the index (partial name matching supported):
+
+```powershell
+# Get all settings by monitor name
+DDCSwitch get "VG270U P"
+DDCSwitch get "Generic PnP"
+```
+
 Get a specific feature:
 
 ```powershell
@@ -110,6 +118,10 @@ DDCSwitch get 0 brightness
 
 # Get contrast as percentage  
 DDCSwitch get 0 contrast
+
+# Works with monitor names too
+DDCSwitch get "VG270U P" brightness
+DDCSwitch get "Generic PnP" input
 ```
 
 Output: `Monitor: Generic PnP Monitor` / `Brightness: 75% (120/160)`
@@ -152,13 +164,23 @@ DDCSwitch set 0 0x10 120
 
 ### VCP Feature Scanning
 
-Discover all supported VCP features on a monitor:
+Discover all supported VCP features on all monitors:
 
 ```powershell
-DDCSwitch list --verbose
+DDCSwitch list --all
 ```
 
-This scans all VCP codes (0x00-0xFF) and displays supported features with their current values, maximum values, and access types (read-only, write-only, read-write).
+This scans all VCP codes (0x00-0xFF) for every monitor and displays supported features with their current values, maximum values, and access types (read-only, write-only, read-write).
+
+To scan a specific monitor, use the `get` command:
+
+```powershell
+# Scan specific monitor by index
+DDCSwitch get 0
+
+# Scan specific monitor by name
+DDCSwitch get "VG270U"
+```
 
 ### VCP Feature Categories and Discovery
 
@@ -256,6 +278,9 @@ DDCSwitch list --category color
 
 # Search for features by name
 DDCSwitch get 0 bright  # Matches "brightness"
+
+# Or by monitor name
+DDCSwitch get "VG270U" bright
 ```
 
 **Desktop shortcut:**

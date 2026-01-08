@@ -21,8 +21,8 @@ internal static class CommandRouter
         filteredArgs = filteredArgs.Where(a => !a.Equals("--verbose", StringComparison.OrdinalIgnoreCase)).ToArray();
 
         // Check for --scan flag
-        bool scanOutput = filteredArgs.Contains("--scan", StringComparer.OrdinalIgnoreCase);
-        filteredArgs = filteredArgs.Where(a => !a.Equals("--scan", StringComparison.OrdinalIgnoreCase)).ToArray();
+        bool scanOutput = filteredArgs.Contains("--all", StringComparer.OrdinalIgnoreCase);
+        filteredArgs = filteredArgs.Where(a => !a.Equals("--alll", StringComparison.OrdinalIgnoreCase)).ToArray();
 
         if (filteredArgs.Length == 0)
         {

@@ -228,10 +228,18 @@ This shows current brightness and contrast levels for each monitor (displays "N/
 # Get all VCP features for primary monitor (scans all supported features)
 DDCSwitch get 0
 
-# Get specific features
+# Get all features by monitor name (partial matching supported)
+DDCSwitch get "VG270U P"
+DDCSwitch get "Generic PnP"
+
+# Get specific features by index
 DDCSwitch get 0 input      # Current input source
 DDCSwitch get 0 brightness # Current brightness
 DDCSwitch get 0 contrast   # Current contrast
+
+# Get specific features by monitor name
+DDCSwitch get "Generic PnP" input
+DDCSwitch get "LG" brightness
 
 # Get raw VCP value
 DDCSwitch get 0 0x10  # Brightness (raw)
@@ -355,8 +363,14 @@ Write-Host "Work profile activated!" -ForegroundColor Green
 ### Discover VCP Features
 
 ```powershell
-# Use verbose listing to see all supported VCP features
-DDCSwitch list --verbose
+# Scan all VCP features for all monitors
+DDCSwitch list --all
+
+# Scan all VCP features for a specific monitor
+DDCSwitch get 0
+
+# Scan by monitor name
+DDCSwitch get "VG270U P"
 ```
 
 ### Common VCP Codes
@@ -1527,6 +1541,12 @@ Write-Host "Testing complete! Document which codes worked for your monitor." -Fo
 # Get current input (if this works, DDC/CI is functional)
 DDCSwitch get 0
 
+# Get by monitor name
+DDCSwitch get "VG270U"
+
+# List all monitors with all VCP values
+DDCSwitch list --all
+
 # Try setting to current input (should succeed instantly)
 DDCSwitch list  # Note the current input
 DDCSwitch set 0 <current-input>
@@ -1556,6 +1576,10 @@ DDCSwitch set "LG ULTRAGEAR" HDMI1
 
 # Partial name matching works
 DDCSwitch set "ULTRAGEAR" HDMI1
+
+# Get settings by monitor name
+DDCSwitch get "VG270U" brightness
+DDCSwitch get "Generic PnP"  # Gets all VCP values for this monitor
 ```
 
 ## Integration with Other Tools
