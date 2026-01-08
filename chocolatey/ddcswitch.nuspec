@@ -3,13 +3,13 @@
   <metadata>
     <id>ddcswitch</id>
     <version>__VERSION__</version>
-    <packageSourceUrl>https://github.com/markdwags/DDCSwitch</packageSourceUrl>
+    <packageSourceUrl>https://github.com/markdwags/ddcswitch</packageSourceUrl>
     <owners>markdwags</owners>
     <title>ddcswitch</title>
     <authors>markdwags</authors>
     <projectUrl>https://github.com/markdwags/ddcswitch</projectUrl>
-    <iconUrl>https://cdn.jsdelivr.net/gh/markdwags/DDCSwitch@main/icon.png</iconUrl>
-    <licenseUrl>https://github.com/markdwags/DDCSwitch/blob/main/LICENSE</licenseUrl>
+    <iconUrl>https://cdn.jsdelivr.net/gh/markdwags/ddcswitch@main/icon.png</iconUrl>
+    <licenseUrl>https://github.com/markdwags/ddcswitch/blob/main/LICENSE</licenseUrl>
     <requireLicenseAcceptance>false</requireLicenseAcceptance>
     <projectSourceUrl>https://github.com/markdwags/ddcswitch</projectSourceUrl>
     <docsUrl>https://github.com/markdwags/ddcswitch#readme</docsUrl>
