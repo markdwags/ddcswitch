@@ -12,6 +12,7 @@
         <IlcGenerateStackTraceData>false</IlcGenerateStackTraceData>
         <StripSymbols>true</StripSymbols>
         <AssemblyName>ddcswitch</AssemblyName>
+        <NoWarn>$(NoWarn);CA1416</NoWarn>
     </PropertyGroup>
 
     <!-- Extract version from CHANGELOG.md -->

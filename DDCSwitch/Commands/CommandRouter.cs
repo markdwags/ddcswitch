@@ -37,10 +37,38 @@ internal static class CommandRouter
                 "list" or "ls" => ListCommand.Execute(jsonOutput, verboseOutput),
                 "get" => GetCommand.Execute(filteredArgs, jsonOutput),
                 "set" => SetCommand.Execute(filteredArgs, jsonOutput),
+                "toggle" => ToggleCommand.Execute(filteredArgs, jsonOutput),
+                "info" => InfoCommand.Execute(filteredArgs, jsonOutput),
                 "version" or "-v" or "--version" => HelpCommand.ShowVersion(jsonOutput),
                 "help" or "-h" or "--help" or "/?" => HelpCommand.ShowUsage(),
                 _ => InvalidCommand(filteredArgs[0], jsonOutput)
             };
+        }
+        catch (ArgumentException ex)
+        {
+            if (jsonOutput)
+            {
+                var error = new ErrorResponse(false, ex.Message);
+                Console.WriteLine(JsonSerializer.Serialize(error, JsonContext.Default.ErrorResponse));
+            }
+            else
+            {
+                ConsoleOutputFormatter.WriteError(ex.Message);
+            }
+            return 1;
+        }
+        catch (InvalidOperationException ex)
+        {
+            if (jsonOutput)
+            {
+                var error = new ErrorResponse(false, ex.Message);
+                Console.WriteLine(JsonSerializer.Serialize(error, JsonContext.Default.ErrorResponse));
+            }
+            else
+            {
+                ConsoleOutputFormatter.WriteError(ex.Message);
+            }
+            return 1;
         }
         catch (Exception ex)
         {
@@ -53,7 +81,6 @@ internal static class CommandRouter
             {
                 ConsoleOutputFormatter.WriteError(ex.Message);
             }
-
             return 1;
         }
     }

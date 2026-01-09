@@ -13,6 +13,7 @@ A Windows command-line utility to control monitor settings via DDC/CI (Display D
 ## Features
 
 - 🖥️ **List all DDC/CI capable monitors** with their current input sources
+- **Detailed EDID information** - View monitor specifications, capabilities, and color characteristics
 - 🔄 **Switch monitor inputs** programmatically (HDMI, DisplayPort, DVI, VGA, etc.)
 - 🔆 **Control brightness and contrast** with percentage values (0-100%)
 - 🎛️ **Comprehensive VCP feature support** - Access all MCCS standardized monitor controls
@@ -25,6 +26,20 @@ A Windows command-line utility to control monitor settings via DDC/CI (Display D
 - 🪟 **Windows-only** - uses native Windows DDC/CI APIs (use ddcutil on Linux)
 
 ## Installation
+
+### Chocolatey (Recommended)
+
+Install via [Chocolatey](https://chocolatey.org/) package manager:
+
+```powershell
+choco install ddcswitch
+```
+
+To upgrade to the latest version:
+
+```powershell
+choco upgrade ddcswitch
+```
 
 ### Pre-built Binary
 
@@ -89,6 +104,28 @@ Example output:
 
 Add `--json` for machine-readable output (see [EXAMPLES.md](EXAMPLES.md) for automation examples).
 
+### Monitor Information (EDID)
+
+View detailed EDID (Extended Display Identification Data) information for a specific monitor:
+
+```powershell
+ddcswitch info 0
+```
+
+The info command provides comprehensive monitor details including:
+- **EDID version** and manufacturer information
+- **Model name**, serial number, and manufacture date
+- **Video input type** (Digital/Analog)
+- **Supported features** (DPMS power modes, display type, color space)
+- **Chromaticity coordinates** for color calibration (red, green, blue, white points in CIE 1931 color space)
+- **Current input source** status
+
+JSON output is supported with `--json` flag for programmatic access to all EDID data:
+
+```powershell
+ddcswitch info 0 --json
+```
+
 ### Get Current Settings
 
 Get all VCP features for a specific monitor:
@@ -138,17 +175,24 @@ ddcswitch set 0 HDMI1
 ddcswitch set "LG ULTRAGEAR" HDMI2
 ```
 
-Set brightness or contrast with percentage values:
+### Toggle Between Input Sources
+
+Automatically switch between two input sources without specifying which one:
 
 ```powershell
-# Set brightness to 75%
-ddcswitch set 0 brightness 75%
+# Toggle between HDMI1 and DisplayPort1
+ddcswitch toggle 0 HDMI1 DP1
 
-# Set contrast to 80%
-ddcswitch set 0 contrast 80%
+# Toggle by monitor name
+ddcswitch toggle "LG ULTRAGEAR" HDMI1 HDMI2
 ```
 
-Output: `✓ Successfully set brightness to 75% (120/160)`
+The toggle command detects the current input and switches to the alternate one:
+- If current input is HDMI1 → switches to DP1
+- If current input is DP1 → switches to HDMI1  
+- If current input is neither → switches to HDMI1 (with warning)
+
+Perfect for hotkeys and automation where you want to switch between two specific inputs without knowing which one is currently active.
 
 ### Raw VCP Access
 
@@ -250,6 +294,15 @@ Color Control Features:
 ```powershell
 ddcswitch set 0 HDMI1
 ddcswitch set 1 DP1
+```
+
+**Toggle between input sources:**
+```powershell
+# Toggle main monitor between HDMI1 and DisplayPort
+ddcswitch toggle 0 HDMI1 DP1
+
+# Toggle secondary monitor between HDMI inputs
+ddcswitch toggle 1 HDMI1 HDMI2
 ```
 
 **Control comprehensive VCP features:**

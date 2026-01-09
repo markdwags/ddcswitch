@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Runtime.InteropServices;
+using Microsoft.Win32;
 
 namespace DDCSwitch;
 
@@ -85,5 +86,89 @@ internal static class NativeMethods
     }
 
     public const uint MONITORINFOF_PRIMARY = 0x00000001;
-}
 
+    /// <summary>
+    /// Attempts to retrieve EDID data for a monitor from Windows Registry.
+    /// </summary>
+    /// <param name="deviceName">Device name from MONITORINFOEX (e.g., \\.\DISPLAY1)</param>
+    /// <returns>EDID byte array or null if not found</returns>
+    public static byte[]? GetEdidFromRegistry(string deviceName)
+    {
+        try
+        {
+            // Enumerate all DISPLAY devices in registry
+            const string displayKey = @"SYSTEM\CurrentControlSet\Enum\DISPLAY";
+            using var displayRoot = Registry.LocalMachine.OpenSubKey(displayKey);
+            if (displayRoot == null) return null;
+
+            // Collect all EDIDs from active monitors
+            var edidList = new List<byte[]>();
+
+            // Try each monitor manufacturer key
+            foreach (string mfgKey in displayRoot.GetSubKeyNames())
+            {
+                using var mfgSubKey = displayRoot.OpenSubKey(mfgKey);
+                if (mfgSubKey == null) continue;
+
+                // Try each instance under this manufacturer
+                foreach (string instanceKey in mfgSubKey.GetSubKeyNames())
+                {
+                    using var instanceSubKey = mfgSubKey.OpenSubKey(instanceKey);
+                    if (instanceSubKey == null) continue;
+
+                    // Check if this is an active device
+                    using var deviceParams = instanceSubKey.OpenSubKey("Device Parameters");
+                    if (deviceParams == null) continue;
+
+                    // Read EDID data
+                    var edidData = deviceParams.GetValue("EDID") as byte[];
+                    if (edidData != null && edidData.Length >= 128)
+                    {
+                        // Validate EDID header
+                        if (EdidParser.ValidateHeader(edidData))
+                        {
+                            edidList.Add(edidData);
+                        }
+                    }
+                }
+            }
+
+            // Extract display index from device name (e.g., \\.\DISPLAY1 -> 0-based index 0)
+            string displayNum = deviceName.Replace(@"\\.\DISPLAY", "");
+            if (!int.TryParse(displayNum, out int displayIndex))
+                return null;
+            
+            // Convert 1-based display number to 0-based index
+            int listIndex = displayIndex - 1;
+            
+            // Return EDID at the corresponding index if available
+            if (listIndex >= 0 && listIndex < edidList.Count)
+            {
+                return edidList[listIndex];
+            }
+
+            // No reliable EDID mapping found for this display index
+            return null;
+        }
+        catch (System.Security.SecurityException)
+        {
+            // No access to registry
+            return null;
+        }
+        catch (System.UnauthorizedAccessException)
+        {
+            // Access denied
+            return null;
+        }
+        catch (System.IO.IOException)
+        {
+            // Registry I/O error
+            return null;
+        }
+        catch (Exception)
+        {
+            // Unexpected error
+            return null;
+        }
+    }
+}

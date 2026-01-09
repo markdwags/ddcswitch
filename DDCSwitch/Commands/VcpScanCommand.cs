@@ -108,10 +108,15 @@ internal static class VcpScanCommand
             }
             
             // Filter only supported features for cleaner output
-            var supportedFeatures = features.Values
-                .Where(f => f.IsSupported)
-                .OrderBy(f => f.Code)
-                .ToList();
+            var supportedFeatures = new List<VcpFeatureInfo>(features.Count);
+            foreach (var feature in features.Values)
+            {
+                if (feature.IsSupported)
+                {
+                    supportedFeatures.Add(feature);
+                }
+            }
+            supportedFeatures.Sort((a, b) => a.Code.CompareTo(b.Code));
 
             if (jsonOutput)
             {

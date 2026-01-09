@@ -779,7 +779,7 @@ public partial class VcpFeature
     /// <summary>
     /// All features registry - contains all predefined MCCS features
     /// </summary>
-    public static IReadOnlyList<VcpFeature> AllFeatures { get; } = new List<VcpFeature>
+    private static readonly VcpFeature[] _allFeatures = new VcpFeature[]
     {
         Degauss,
         NewControlValue,
@@ -932,4 +932,6 @@ public partial class VcpFeature
         ScratchPad,
         VcpVersion
     };
+
+    public static IReadOnlyList<VcpFeature> AllFeatures => _allFeatures;
 }

@@ -1,42 +1,143 @@
 # ddcswitch Examples
 
-This document contains detailed examples and use cases for ddcswitch, including input switching, brightness/contrast control, comprehensive VCP feature access, and automation.
+This document contains detailed examples and use cases for ddcswitch, including input switching, brightness/contrast control, comprehensive VCP feature access, EDID information retrieval, and automation.
+
+## Monitor Information (EDID)
+
+Retrieve detailed Extended Display Identification Data (EDID) from your monitors to view specifications, capabilities, and color characteristics.
+
+### Basic EDID Information
+
+View all EDID data for a specific monitor:
+
+```powershell
+ddcswitch info 0
+```
+
+### JSON Output for EDID Data
+
+Retrieve EDID data in JSON format for programmatic access:
+
+```powershell
+ddcswitch info 0 --json
+```
+
+### Automation Examples with EDID Data
+
+#### PowerShell: Check Monitor Model Before Applying Settings
+
+```powershell
+# Get EDID info and apply settings only to specific model
+$info = ddcswitch info 0 --json | ConvertFrom-Json
+
+if ($info.edid.modelName -like "*VG270U*") {
+    Write-Host "Configuring Acer VG270U..." -ForegroundColor Green
+    ddcswitch set 0 brightness 80%
+    ddcswitch set 0 contrast 75%
+    ddcswitch set 0 input HDMI1
+}
+else {
+    Write-Host "Monitor model: $($info.edid.modelName)" -ForegroundColor Yellow
+}
+```
+
+#### PowerShell: Log Monitor Information
+
+```powershell
+# Create monitor inventory with EDID details
+$monitors = @()
+$listOutput = ddcswitch list --json | ConvertFrom-Json
+
+foreach ($monitor in $listOutput.monitors) {
+    $edidInfo = ddcswitch info $monitor.index --json | ConvertFrom-Json
+    
+    $monitors += [PSCustomObject]@{
+        Index = $monitor.index
+        Name = $monitor.name
+        Manufacturer = $edidInfo.edid.manufacturerName
+        Model = $edidInfo.edid.modelName
+        Serial = $edidInfo.edid.serialNumber
+        EdidVersion = "$($edidInfo.edid.versionMajor).$($edidInfo.edid.versionMinor)"
+        VideoInput = $edidInfo.edid.videoInputType
+        ManufactureDate = "$($edidInfo.edid.manufactureYear) Week $($edidInfo.edid.manufactureWeek)"
+        CurrentInput = $edidInfo.currentInput
+    }
+}
+
+$monitors | Format-Table -AutoSize
+```
+
+#### Python: Color Calibration Using Chromaticity Data
+
+```python
+import subprocess
+import json
+
+def get_monitor_chromaticity(monitor_index):
+    """Get chromaticity coordinates for color calibration."""
+    result = subprocess.run(
+        ['ddcswitch', 'info', str(monitor_index), '--json'],
+        capture_output=True,
+        text=True
+    )
+    
+    data = json.loads(result.stdout)
+    if data['success'] and 'chromaticity' in data['edid']:
+        chroma = data['edid']['chromaticity']
+        return {
+            'red': (chroma['red']['x'], chroma['red']['y']),
+            'green': (chroma['green']['x'], chroma['green']['y']),
+            'blue': (chroma['blue']['x'], chroma['blue']['y']),
+            'white': (chroma['white']['x'], chroma['white']['y'])
+        }
+    return None
+
+# Use chromaticity data for color management
+chroma = get_monitor_chromaticity(0)
+if chroma:
+    print(f"Monitor Color Gamut:")
+    print(f"  Red:   x={chroma['red'][0]:.4f}, y={chroma['red'][1]:.4f}")
+    print(f"  Green: x={chroma['green'][0]:.4f}, y={chroma['green'][1]:.4f}")
+    print(f"  Blue:  x={chroma['blue'][0]:.4f}, y={chroma['blue'][1]:.4f}")
+    print(f"  White: x={chroma['white'][0]:.4f}, y={chroma['white'][1]:.4f}")
+```
+
+#### Node.js: Monitor Fleet Management
+
+```javascript
+const { execSync } = require('child_process');
+
+function getMonitorInfo(index) {
+    const output = execSync(`ddcswitch info ${index} --json`, { encoding: 'utf8' });
+    return JSON.parse(output);
+}
+
+// Create monitor inventory
+function inventoryMonitors() {
+    const list = JSON.parse(execSync('ddcswitch list --json', { encoding: 'utf8' }));
+    
+    const inventory = list.monitors.map(monitor => {
+        const info = getMonitorInfo(monitor.index);
+        return {
+            index: monitor.index,
+            manufacturer: info.edid?.manufacturerName || 'Unknown',
+            model: info.edid?.modelName || 'Unknown',
+            edidVersion: `${info.edid?.versionMajor}.${info.edid?.versionMinor}`,
+            isDigital: info.edid?.isDigitalInput,
+            manufactureYear: info.edid?.manufactureYear,
+            currentInput: info.currentInput
+        };
+    });
+    
+    console.table(inventory);
+}
+
+inventoryMonitors();
+```
 
 ## Comprehensive VCP Feature Examples
 
-ddcswitch now supports all MCCS (Monitor Control Command Set) standardized VCP features, organized by categories for easy discovery.
-
-### VCP Feature Categories
-
-List all available feature categories:
-
-```powershell
-ddcswitch list --categories
-```
-
-Output:
-```
-Available VCP Feature Categories:
-- ImageAdjustment: Brightness, contrast, sharpness, backlight controls
-- ColorControl: RGB gains, color temperature, gamma, hue, saturation
-- Geometry: Position, size, pincushion controls (mainly CRT monitors)
-- Audio: Volume, mute, balance, treble, bass controls
-- Preset: Factory defaults, degauss, calibration features
-- Miscellaneous: Power mode, OSD settings, firmware information
-```
-
-### Browse Features by Category
-
-```powershell
-# Image adjustment features
-ddcswitch list --category image
-
-# Color control features  
-ddcswitch list --category color
-
-# Audio features
-ddcswitch list --category audio
-```
+ddcswitch now supports all MCCS (Monitor Control Command Set) standardized VCP features.
 
 ### Color Control Examples
 
@@ -259,6 +360,64 @@ ddcswitch set 0 contrast 80%
 
 # Set raw VCP value
 ddcswitch set 0 0x10 120  # Brightness (raw value)
+```
+
+### Toggle Between Input Sources
+
+The toggle command automatically switches between two specified input sources by detecting the current input and switching to the alternate one:
+
+```powershell
+# Toggle between HDMI1 and DisplayPort1
+ddcswitch toggle 0 HDMI1 DP1
+
+# Toggle between HDMI1 and HDMI2 by monitor name
+ddcswitch toggle "LG ULTRAGEAR" HDMI1 HDMI2
+
+# Toggle with JSON output for automation
+ddcswitch toggle 0 HDMI1 DP1 --json
+```
+
+#### Toggle Command Behavior
+
+- **Current input is HDMI1** → Switches to DP1
+- **Current input is DP1** → Switches to HDMI1  
+- **Current input is neither** → Switches to HDMI1 (first input) with warning
+
+#### Toggle Examples
+
+```powershell
+# Create toggle shortcuts for different monitor setups
+# toggle-main-monitor.ps1
+ddcswitch toggle 0 HDMI1 DP1
+Write-Host "Toggled main monitor input" -ForegroundColor Green
+
+# toggle-secondary-monitor.ps1  
+ddcswitch toggle 1 HDMI2 DP2
+Write-Host "Toggled secondary monitor input" -ForegroundColor Green
+
+# Smart toggle with status feedback
+$result = ddcswitch toggle 0 HDMI1 DP1 --json | ConvertFrom-Json
+if ($result.success) {
+    Write-Host "Switched from $($result.fromInput) to $($result.toInput)" -ForegroundColor Green
+} else {
+    Write-Host "Toggle failed: $($result.errorMessage)" -ForegroundColor Red
+}
+```
+
+#### AutoHotkey Toggle Integration
+
+```autohotkey
+; Ctrl+Alt+T: Toggle between HDMI1 and DisplayPort
+^!t::
+    Run, ddcswitch.exe toggle 0 HDMI1 DP1, , Hide
+    TrayTip, ddcswitch, Input toggled, 1
+    return
+
+; Ctrl+Alt+Shift+T: Toggle secondary monitor
+^!+t::
+    Run, ddcswitch.exe toggle 1 HDMI2 DP2, , Hide
+    TrayTip, ddcswitch, Secondary monitor toggled, 1
+    return
 ```
 
 ## Brightness and Contrast Control
