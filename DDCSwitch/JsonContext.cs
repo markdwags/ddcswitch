@@ -47,7 +47,14 @@ internal record MonitorInfo(
     string? CurrentInputCode,
     string Status,
     string? Brightness = null,
-    string? Contrast = null);
+    string? Contrast = null,
+    string? ManufacturerId = null,
+    string? ManufacturerName = null,
+    string? ModelName = null,
+    string? SerialNumber = null,
+    int? ProductCode = null,
+    int? ManufactureYear = null,
+    int? ManufactureWeek = null);
 
 internal record MonitorReference(int Index, string Name, string DeviceName, bool IsPrimary = false);
 

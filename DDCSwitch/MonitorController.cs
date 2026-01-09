@@ -54,6 +54,10 @@ public static class MonitorController
                             isPrimary,
                             physicalMonitor.hPhysicalMonitor
                         );
+                        
+                        // Load EDID data for monitor identification
+                        monitor.LoadEdidData();
+                        
                         monitors.Add(monitor);
                     }
                 }

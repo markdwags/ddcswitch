@@ -16,8 +16,44 @@ public class Monitor(int index, string name, string deviceName, bool isPrimary, 
     public string DeviceName { get; } = deviceName;
     public bool IsPrimary { get; } = isPrimary;
 
+    // EDID properties
+    public string? ManufacturerId { get; private set; }
+    public string? ManufacturerName { get; private set; }
+    public string? ModelName { get; private set; }
+    public string? SerialNumber { get; private set; }
+    public ushort? ProductCode { get; private set; }
+    public int? ManufactureYear { get; private set; }
+    public int? ManufactureWeek { get; private set; }
+
     private IntPtr Handle { get; } = handle;
     private bool _disposed;
+
+    /// <summary>
+    /// Loads EDID data from registry and populates EDID properties.
+    /// </summary>
+    public void LoadEdidData()
+    {
+        try
+        {
+            var edid = NativeMethods.GetEdidFromRegistry(DeviceName);
+            if (edid == null || edid.Length < 128) return;
+
+            ManufacturerId = EdidParser.ParseManufacturerId(edid);
+            if (ManufacturerId != null)
+            {
+                ManufacturerName = EdidParser.GetManufacturerName(ManufacturerId);
+            }
+            ModelName = EdidParser.ParseModelName(edid);
+            SerialNumber = EdidParser.ParseSerialNumber(edid);
+            ProductCode = EdidParser.ParseProductCode(edid);
+            ManufactureYear = EdidParser.ParseManufactureYear(edid);
+            ManufactureWeek = EdidParser.ParseManufactureWeek(edid);
+        }
+        catch
+        {
+            // Graceful degradation - EDID properties remain null
+        }
+    }
 
     public bool TryGetInputSource(out uint currentValue, out uint maxValue)
     {

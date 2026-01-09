@@ -125,7 +125,14 @@ internal static class ListCommand
                 inputCode != null ? $"0x{inputCode:X2}" : null,
                 status,
                 brightness,
-                contrast);
+                contrast,
+                monitor.ManufacturerId,
+                monitor.ManufacturerName,
+                monitor.ModelName,
+                monitor.SerialNumber,
+                monitor.ProductCode,
+                monitor.ManufactureYear,
+                monitor.ManufactureWeek);
         }).ToList();
 
         var result = new ListMonitorsResponse(true, monitorList);
@@ -142,9 +149,13 @@ internal static class ListCommand
             .AddColumn(new TableColumn("[bold yellow]Device[/]").LeftAligned())
             .AddColumn(new TableColumn("[bold yellow]Current Input[/]").LeftAligned());
 
-        // Add brightness and contrast columns if verbose mode is enabled
+        // Add EDID and feature columns if verbose mode is enabled
         if (verboseOutput)
         {
+            table.AddColumn(new TableColumn("[bold yellow]Manufacturer[/]").LeftAligned());
+            table.AddColumn(new TableColumn("[bold yellow]Model[/]").LeftAligned());
+            table.AddColumn(new TableColumn("[bold yellow]Serial[/]").LeftAligned());
+            table.AddColumn(new TableColumn("[bold yellow]Mfg Date[/]").LeftAligned());
             table.AddColumn(new TableColumn("[bold yellow]Brightness[/]").Centered());
             table.AddColumn(new TableColumn("[bold yellow]Contrast[/]").Centered());
         }
@@ -219,9 +230,29 @@ internal static class ListCommand
                 inputInfo
             };
 
-            // Add brightness and contrast columns if verbose mode is enabled
+            // Add EDID and feature columns if verbose mode is enabled
             if (verboseOutput)
             {
+                // EDID information
+                string manufacturer = monitor.ManufacturerName != null 
+                    ? $"[cyan]{monitor.ManufacturerName}[/]" 
+                    : "[dim]N/A[/]";
+                string model = monitor.ModelName != null 
+                    ? $"[cyan]{monitor.ModelName}[/]" 
+                    : "[dim]N/A[/]";
+                string serial = monitor.SerialNumber != null 
+                    ? $"[dim]{monitor.SerialNumber}[/]" 
+                    : "[dim]N/A[/]";
+                string mfgDate = monitor.ManufactureYear.HasValue 
+                    ? (monitor.ManufactureWeek.HasValue 
+                        ? $"[dim]{monitor.ManufactureYear}/W{monitor.ManufactureWeek}[/]"
+                        : $"[dim]{monitor.ManufactureYear}[/]")
+                    : "[dim]N/A[/]";
+                
+                row.Add(manufacturer);
+                row.Add(model);
+                row.Add(serial);
+                row.Add(mfgDate);
                 row.Add(brightnessInfo);
                 row.Add(contrastInfo);
             }
