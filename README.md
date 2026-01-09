@@ -194,18 +194,6 @@ The toggle command detects the current input and switches to the alternate one:
 
 Perfect for hotkeys and automation where you want to switch between two specific inputs without knowing which one is currently active.
 
-Set brightness or contrast with percentage values:
-
-```powershell
-# Set brightness to 75%
-ddcswitch set 0 brightness 75%
-
-# Set contrast to 80%
-ddcswitch set 0 contrast 80%
-```
-
-Output: `✓ Successfully set brightness to 75% (120/160)`
-
 ### Raw VCP Access
 
 For advanced users, access any VCP feature by code:
