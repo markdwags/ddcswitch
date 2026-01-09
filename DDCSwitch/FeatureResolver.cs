@@ -15,7 +15,7 @@ public static class FeatureResolver
     /// </summary>
     private static Dictionary<string, VcpFeature> BuildFeatureMap()
     {
-        var map = new Dictionary<string, VcpFeature>(StringComparer.OrdinalIgnoreCase);
+        var map = new Dictionary<string, VcpFeature>(capacity: 200, StringComparer.OrdinalIgnoreCase);
         
         foreach (var feature in VcpFeature.AllFeatures)
         {
@@ -37,7 +37,7 @@ public static class FeatureResolver
     /// </summary>
     private static Dictionary<byte, VcpFeature> BuildCodeMap()
     {
-        var map = new Dictionary<byte, VcpFeature>();
+        var map = new Dictionary<byte, VcpFeature>(capacity: 150);
         
         foreach (var feature in VcpFeature.AllFeatures)
         {
@@ -202,10 +202,11 @@ public static class FeatureResolver
         input = input.Trim();
 
         // Try hex format (0x10, 0X10)
-        if (input.StartsWith("0x", StringComparison.OrdinalIgnoreCase) ||
-            input.StartsWith("0X", StringComparison.OrdinalIgnoreCase))
+        ReadOnlySpan<char> inputSpan = input.AsSpan();
+        if (inputSpan.StartsWith("0x", StringComparison.OrdinalIgnoreCase) ||
+            inputSpan.StartsWith("0X", StringComparison.OrdinalIgnoreCase))
         {
-            var hexPart = input.Substring(2);
+            ReadOnlySpan<char> hexPart = inputSpan.Slice(2);
             if (byte.TryParse(hexPart, NumberStyles.HexNumber, CultureInfo.InvariantCulture, out vcpCode))
             {
                 // VCP codes are inherently valid for byte range (0x00-0xFF)
@@ -246,12 +247,18 @@ public static class FeatureResolver
         input = input.Trim();
 
         // Remove % suffix if present
-        if (input.EndsWith("%"))
+        ReadOnlySpan<char> inputSpan = input.AsSpan();
+        if (inputSpan.EndsWith("%"))
         {
-            input = input.Substring(0, input.Length - 1).Trim();
+            inputSpan = inputSpan.Slice(0, inputSpan.Length - 1);
+            // Trim trailing whitespace after removing %
+            while (inputSpan.Length > 0 && char.IsWhiteSpace(inputSpan[inputSpan.Length - 1]))
+            {
+                inputSpan = inputSpan.Slice(0, inputSpan.Length - 1);
+            }
         }
 
-        if (!uint.TryParse(input, NumberStyles.Integer, CultureInfo.InvariantCulture, out percentage))
+        if (!uint.TryParse(inputSpan, NumberStyles.Integer, CultureInfo.InvariantCulture, out percentage))
         {
             return false;
         }

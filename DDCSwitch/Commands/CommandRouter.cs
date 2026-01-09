@@ -44,6 +44,32 @@ internal static class CommandRouter
                 _ => InvalidCommand(filteredArgs[0], jsonOutput)
             };
         }
+        catch (ArgumentException ex)
+        {
+            if (jsonOutput)
+            {
+                var error = new ErrorResponse(false, ex.Message);
+                Console.WriteLine(JsonSerializer.Serialize(error, JsonContext.Default.ErrorResponse));
+            }
+            else
+            {
+                ConsoleOutputFormatter.WriteError(ex.Message);
+            }
+            return 1;
+        }
+        catch (InvalidOperationException ex)
+        {
+            if (jsonOutput)
+            {
+                var error = new ErrorResponse(false, ex.Message);
+                Console.WriteLine(JsonSerializer.Serialize(error, JsonContext.Default.ErrorResponse));
+            }
+            else
+            {
+                ConsoleOutputFormatter.WriteError(ex.Message);
+            }
+            return 1;
+        }
         catch (Exception ex)
         {
             if (jsonOutput)
@@ -55,7 +81,6 @@ internal static class CommandRouter
             {
                 ConsoleOutputFormatter.WriteError(ex.Message);
             }
-
             return 1;
         }
     }

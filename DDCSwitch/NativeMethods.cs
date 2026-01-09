@@ -150,8 +150,24 @@ internal static class NativeMethods
             // Fallback: return first EDID if index doesn't match
             return edidList.Count > 0 ? edidList[0] : null;
         }
-        catch
+        catch (System.Security.SecurityException)
         {
+            // No access to registry
+            return null;
+        }
+        catch (System.UnauthorizedAccessException)
+        {
+            // Access denied
+            return null;
+        }
+        catch (System.IO.IOException)
+        {
+            // Registry I/O error
+            return null;
+        }
+        catch (Exception)
+        {
+            // Unexpected error
             return null;
         }
     }
