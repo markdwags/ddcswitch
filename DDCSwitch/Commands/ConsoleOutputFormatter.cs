@@ -152,9 +152,9 @@ internal static class ConsoleOutputFormatter
             var chromaTable = new Table()
                 .Border(TableBorder.Rounded)
                 .BorderColor(Color.Grey)
-                .AddColumn(new TableColumn("[bold]Color[/]").Centered().Width(12))
-                .AddColumn(new TableColumn("[bold]X[/]").Centered().Width(12))
-                .AddColumn(new TableColumn("[bold]Y[/]").Centered().Width(12));
+                .AddColumn(new TableColumn("[bold]Color[/]").LeftAligned().Width(12))
+                .AddColumn(new TableColumn("[bold]X[/]").LeftAligned().Width(12))
+                .AddColumn(new TableColumn("[bold]Y[/]").LeftAligned().Width(12));
 
             chromaTable.AddRow(
                 "[red]● Red[/]",

@@ -224,7 +224,7 @@ internal static class ListCommand
 
             var row = new List<string>
             {
-                monitor.IsPrimary ? $"[bold cyan]{monitor.Index}[/] [yellow]*[/]" : $"[cyan]{monitor.Index}[/]",
+                monitor.IsPrimary ? $"[bold cyan] {monitor.Index}[/][yellow]*[/]" : $"[cyan]{monitor.Index}[/]",
                 monitor.Name,
                 $"[dim]{monitor.DeviceName}[/]",
                 inputInfo
