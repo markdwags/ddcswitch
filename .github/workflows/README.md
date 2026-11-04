@@ -6,6 +6,12 @@
 Feature branches are built through their pull request, so the same commit isn't built twice. A newer push
 to a pull request cancels that PR's run that is still in progress. Runs on `main` are never cancelled.
 
+**Chore work is skipped:** pull requests from `chore/*` branches, and pushes to `main` that merge one
+(`Merge pull request #N from owner/chore/...`) or whose commit message starts with `chore:` / `chore(`
+(squash merges), don't build or release. The skip is on the `build` job, so the check still reports as
+skipped and branch protection is satisfied. Use **Run workflow** (manual dispatch) to build anyway.
+Don't put a version bump in a chore change: it won't release until a later non-chore merge.
+
 ### `build` job (every run)
 1. Installs the .NET SDK pinned in `/global.json` and restores NuGet packages from cache.
 2. Restores the solution. **High or critical NuGet vulnerability advisories (NU1903/NU1904) fail the build.**

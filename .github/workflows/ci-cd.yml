@@ -27,6 +27,17 @@ env:
 jobs:
   build:
     runs-on: windows-latest
+    # Skip chore work: PRs from chore/* branches, and pushes to main that merge one (merge commit
+    # "Merge pull request #N from owner/chore/...") or are a "chore:"/"chore(...)" commit (squash merge).
+    # Skipping at the job level (not via trigger filters) still reports a check, so required checks pass.
+    # Manual dispatch always builds. The release job needs build, so it is skipped too.
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'pull_request' && !startsWith(github.head_ref, 'chore/')) ||
+      (github.event_name == 'push' &&
+        !(startsWith(github.event.head_commit.message, 'Merge pull request') && contains(github.event.head_commit.message, '/chore/')) &&
+        !startsWith(github.event.head_commit.message, 'chore:') &&
+        !startsWith(github.event.head_commit.message, 'chore('))
     outputs:
       version: ${{ steps.version.outputs.version }}
       release_needed: ${{ steps.version.outputs.release_needed }}
