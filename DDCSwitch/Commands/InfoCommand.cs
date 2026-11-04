@@ -23,23 +23,7 @@ internal static class InfoCommand
             return 1;
         }
 
-        List<Monitor> monitors;
-
-        if (!jsonOutput)
-        {
-            monitors = null!;
-            AnsiConsole.Status()
-                .Start("Enumerating monitors...", ctx =>
-                {
-                    ctx.Spinner(Spinner.Known.Dots);
-                    ctx.SpinnerStyle(Style.Parse("cyan"));
-                    monitors = MonitorController.EnumerateMonitors();
-                });
-        }
-        else
-        {
-            monitors = MonitorController.EnumerateMonitors();
-        }
+        using var monitors = MonitorController.EnumerateMonitors();
 
         if (monitors.Count == 0)
         {
@@ -55,12 +39,6 @@ internal static class InfoCommand
 
         int result = DisplayMonitorInfo(monitor, jsonOutput);
 
-        // Cleanup
-        foreach (var m in monitors)
-        {
-            m.Dispose();
-        }
-
         return result;
     }
 
@@ -73,7 +51,7 @@ internal static class InfoCommand
             uint? currentInputCode = null;
             string status = "ok";
 
-            if (monitor.TryGetInputSource(out uint current, out _))
+            if (monitor.TryGetVcpFeature(InputSource.VcpInputSource, out uint current, out _))
             {
                 currentInput = InputSource.GetName(current);
                 currentInputCode = current;
@@ -87,7 +65,7 @@ internal static class InfoCommand
             {
                 var monitorRef = new MonitorReference(
                     monitor.Index,
-                    monitor.ResolvedName,
+                    monitor.Name,
                     monitor.DeviceName,
                     monitor.IsPrimary);
 
@@ -166,7 +144,7 @@ internal static class InfoCommand
         {
             if (jsonOutput)
             {
-                var monitorRef = new MonitorReference(monitor.Index, monitor.ResolvedName, monitor.DeviceName, monitor.IsPrimary);
+                var monitorRef = new MonitorReference(monitor.Index, monitor.Name, monitor.DeviceName, monitor.IsPrimary);
                 var error = new ErrorResponse(false, $"Failed to retrieve monitor information: {ex.Message}", monitorRef);
                 Console.WriteLine(JsonSerializer.Serialize(error, JsonContext.Default.ErrorResponse));
             }
@@ -194,7 +172,7 @@ internal static class InfoCommand
         return 1;
     }
 
-    private static int HandleMonitorNotFound(List<Monitor> monitors, string identifier, bool jsonOutput)
+    private static int HandleMonitorNotFound(IReadOnlyList<Monitor> monitors, string identifier, bool jsonOutput)
     {
         if (jsonOutput)
         {
@@ -205,11 +183,6 @@ internal static class InfoCommand
         {
             ConsoleOutputFormatter.WriteError($"Monitor '{identifier}' not found.");
             AnsiConsole.MarkupLine("[dim]Use [/][yellow]ddcswitch list[/][dim] to see available monitors.[/]");
-        }
-
-        foreach (var m in monitors)
-        {
-            m.Dispose();
         }
 
         return 1;

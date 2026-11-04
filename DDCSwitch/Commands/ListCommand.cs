@@ -1,29 +1,17 @@
-﻿﻿using Spectre.Console;
+﻿using Spectre.Console;
 using System.Text.Json;
 
 namespace DDCSwitch.Commands;
 
 internal static class ListCommand
 {
+    private enum DdcStatus { Ok, NoDdcCi }
+
+    private sealed record Probe(DdcStatus Status, uint? InputCode, string? Brightness, string? Contrast);
+
     public static int Execute(bool jsonOutput, bool verboseOutput)
     {
-        List<Monitor> monitors;
-
-        if (!jsonOutput)
-        {
-            monitors = null!;
-            AnsiConsole.Status()
-                .Start("Enumerating monitors...", ctx =>
-                {
-                    ctx.Spinner(Spinner.Known.Dots);
-                    ctx.SpinnerStyle(Style.Parse("cyan"));
-                    monitors = MonitorController.EnumerateMonitors();
-                });
-        }
-        else
-        {
-            monitors = MonitorController.EnumerateMonitors();
-        }
+        using var monitors = MonitorController.EnumerateMonitors();
 
         if (monitors.Count == 0)
         {
@@ -40,92 +28,73 @@ internal static class ListCommand
             return 1;
         }
 
+        List<Probe> probes = null!;
         if (jsonOutput)
         {
-            OutputJsonList(monitors, verboseOutput);
+            probes = monitors.Select(m => ProbeMonitor(m, verboseOutput)).ToList();
+            OutputJsonList(monitors, probes);
         }
         else
         {
-            OutputTableList(monitors, verboseOutput);
-        }
-
-        // Cleanup
-        foreach (var monitor in monitors)
-        {
-            monitor.Dispose();
+            AnsiConsole.Status()
+                .Spinner(Spinner.Known.Dots)
+                .SpinnerStyle(Style.Parse("cyan"))
+                .Start("Querying monitors...", _ => probes = monitors.Select(m => ProbeMonitor(m, verboseOutput)).ToList());
+            OutputTableList(monitors, probes, verboseOutput);
         }
 
         return 0;
     }
 
-    private static void OutputJsonList(List<Monitor> monitors, bool verboseOutput)
+    /// <summary>
+    /// Talks to one monitor once. A monitor that answers "VCP code not supported" for input select
+    /// still has working DDC/CI (e.g. a single-input display).
+    /// </summary>
+    private static Probe ProbeMonitor(Monitor monitor, bool verboseOutput)
     {
-        var monitorList = monitors.Select(monitor =>
+        DdcStatus status;
+        uint? inputCode = null;
+
+        if (monitor.TryGetVcpFeature(InputSource.VcpInputSource, out uint current, out _, out int error))
         {
-            string? inputName = null;
-            uint? inputCode = null;
-            string status = "ok";
-            string? brightness = null;
-            string? contrast = null;
+            status = DdcStatus.Ok;
+            inputCode = current;
+        }
+        else
+        {
+            status = DdcErrors.IsNotSupported(error) ? DdcStatus.Ok : DdcStatus.NoDdcCi;
+        }
 
-            try
-            {
-                if (monitor.TryGetInputSource(out uint current, out _))
-                {
-                    inputName = InputSource.GetName(current);
-                    inputCode = current;
-                }
-                else
-                {
-                    status = "no_ddc_ci";
-                }
+        string? brightness = null, contrast = null;
+        if (verboseOutput)
+        {
+            brightness = status == DdcStatus.Ok ? ReadPercentage(monitor, VcpFeature.Brightness.Code) : "N/A";
+            contrast = status == DdcStatus.Ok ? ReadPercentage(monitor, VcpFeature.Contrast.Code) : "N/A";
+        }
 
-                // Get brightness and contrast if verbose mode is enabled
-                if (verboseOutput && status == "ok")
-                {
-                    // Try to get brightness (VCP 0x10)
-                    if (monitor.TryGetVcpFeature(VcpFeature.Brightness.Code, out uint brightnessCurrent, out uint brightnessMax))
-                    {
-                        uint brightnessPercentage = FeatureResolver.ConvertRawToPercentage(brightnessCurrent, brightnessMax);
-                        brightness = $"{brightnessPercentage}%";
-                    }
-                    else
-                    {
-                        brightness = "N/A";
-                    }
+        return new Probe(status, inputCode, brightness, contrast);
+    }
 
-                    // Try to get contrast (VCP 0x12)
-                    if (monitor.TryGetVcpFeature(VcpFeature.Contrast.Code, out uint contrastCurrent, out uint contrastMax))
-                    {
-                        uint contrastPercentage = FeatureResolver.ConvertRawToPercentage(contrastCurrent, contrastMax);
-                        contrast = $"{contrastPercentage}%";
-                    }
-                    else
-                    {
-                        contrast = "N/A";
-                    }
-                }
-            }
-            catch
-            {
-                status = "error";
-                if (verboseOutput)
-                {
-                    brightness = "N/A";
-                    contrast = "N/A";
-                }
-            }
+    private static string ReadPercentage(Monitor monitor, byte code) =>
+        monitor.TryGetVcpFeature(code, out uint value, out uint max)
+            ? $"{FeatureResolver.ConvertRawToPercentage(value, max)}%"
+            : "N/A";
 
+    private static void OutputJsonList(IReadOnlyList<Monitor> monitors, List<Probe> probes)
+    {
+        var monitorList = monitors.Select((monitor, i) =>
+        {
+            var probe = probes[i];
             return new MonitorInfo(
                 monitor.Index,
-                monitor.ResolvedName,
+                monitor.Name,
                 monitor.DeviceName,
                 monitor.IsPrimary,
-                inputName,
-                inputCode != null ? $"0x{inputCode:X2}" : null,
-                status,
-                brightness,
-                contrast,
+                probe.InputCode is { } code ? InputSource.GetName(code) : null,
+                probe.InputCode is { } c ? $"0x{c:X2}" : null,
+                probe.Status == DdcStatus.Ok ? "ok" : "no_ddc_ci",
+                probe.Brightness,
+                probe.Contrast,
                 monitor.ManufacturerId,
                 monitor.ManufacturerName,
                 monitor.ModelName,
@@ -139,25 +108,11 @@ internal static class ListCommand
         Console.WriteLine(JsonSerializer.Serialize(result, JsonContext.Default.ListMonitorsResponse));
     }
 
-    private static void OutputTableList(List<Monitor> monitors, bool verboseOutput)
+    private static void OutputTableList(IReadOnlyList<Monitor> monitors, List<Probe> probes, bool verboseOutput)
     {
-        // Summary statistics header
-        int ddcciCount = 0;
-        int primaryCount = 0;
-        
-        foreach (var monitor in monitors)
-        {
-            if (monitor.IsPrimary) primaryCount++;
-            try
-            {
-                if (monitor.TryGetInputSource(out _, out _))
-                {
-                    ddcciCount++;
-                }
-            }
-            catch { }
-        }
-        
+        int ddcciCount = probes.Count(p => p.Status == DdcStatus.Ok);
+        int primaryCount = monitors.Count(m => m.IsPrimary);
+
         var summaryPanel = new Panel(
             $"[bold white]Total Monitors:[/] [cyan]{monitors.Count}[/]  " +
             $"[bold white]DDC/CI Capable:[/] [green]{ddcciCount}[/]  " +
@@ -169,7 +124,7 @@ internal static class ListCommand
         };
         AnsiConsole.Write(summaryPanel);
         AnsiConsole.WriteLine();
-        
+
         var table = new Table()
             .Border(TableBorder.Rounded)
             .BorderColor(Color.White)
@@ -178,7 +133,6 @@ internal static class ListCommand
             .AddColumn(new TableColumn("[bold yellow]Device[/]").LeftAligned())
             .AddColumn(new TableColumn("[bold yellow]Current Input[/]").LeftAligned());
 
-        // Add EDID and feature columns if verbose mode is enabled
         if (verboseOutput)
         {
             table.AddColumn(new TableColumn("[bold yellow]Manufacturer[/]").LeftAligned());
@@ -191,107 +145,47 @@ internal static class ListCommand
 
         table.AddColumn(new TableColumn("[bold yellow]Status[/]").Centered());
 
-        foreach (var monitor in monitors)
+        for (int i = 0; i < monitors.Count; i++)
         {
-            string inputInfo = "[dim]N/A[/]";
-            string status = "[green]✓[/] [bold green]OK[/]";
-            string brightnessInfo = "[dim]N/A[/]";
-            string contrastInfo = "[dim]N/A[/]";
-
-            try
-            {
-                if (monitor.TryGetInputSource(out uint current, out _))
-                {
-                    var inputName = InputSource.GetName(current);
-                    inputInfo = $"[cyan]{inputName}[/] [dim](0x{current:X2})[/]";
-                }
-                else
-                {
-                    status = "[yellow]⚠[/] [bold yellow]No DDC/CI[/]";
-                }
-
-                // Get brightness and contrast if verbose mode is enabled and monitor supports DDC/CI
-                if (verboseOutput && status == "[green]✓[/] [bold green]OK[/]")
-                {
-                    // Try to get brightness (VCP 0x10)
-                    if (monitor.TryGetVcpFeature(VcpFeature.Brightness.Code, out uint brightnessCurrent, out uint brightnessMax))
-                    {
-                        uint brightnessPercentage = FeatureResolver.ConvertRawToPercentage(brightnessCurrent, brightnessMax);
-                        brightnessInfo = $"[green]{brightnessPercentage}%[/]";
-                    }
-                    else
-                    {
-                        brightnessInfo = "[dim]N/A[/]";
-                    }
-
-                    // Try to get contrast (VCP 0x12)
-                    if (monitor.TryGetVcpFeature(VcpFeature.Contrast.Code, out uint contrastCurrent, out uint contrastMax))
-                    {
-                        uint contrastPercentage = FeatureResolver.ConvertRawToPercentage(contrastCurrent, contrastMax);
-                        contrastInfo = $"[green]{contrastPercentage}%[/]";
-                    }
-                    else
-                    {
-                        contrastInfo = "[dim]N/A[/]";
-                    }
-                }
-                else if (verboseOutput)
-                {
-                    brightnessInfo = "[dim]N/A[/]";
-                    contrastInfo = "[dim]N/A[/]";
-                }
-            }
-            catch
-            {
-                status = "[red]✗[/] [bold red]Error[/]";
-                if (verboseOutput)
-                {
-                    brightnessInfo = "[dim]N/A[/]";
-                    contrastInfo = "[dim]N/A[/]";
-                }
-            }
+            var monitor = monitors[i];
+            var probe = probes[i];
 
             var row = new List<string>
             {
                 monitor.IsPrimary ? $"[bold cyan]{monitor.Index}[/] [yellow]●[/]" : $"[cyan]{monitor.Index}[/]",
-                monitor.ResolvedName,
-                $"[dim]{monitor.DeviceName}[/]",
-                inputInfo
+                Markup.Escape(monitor.Name),
+                $"[dim]{Markup.Escape(monitor.DeviceName)}[/]",
+                probe.InputCode is { } code
+                    ? $"[cyan]{Markup.Escape(InputSource.GetName(code))}[/] [dim](0x{code:X2})[/]"
+                    : "[dim]N/A[/]"
             };
 
-            // Add EDID and feature columns if verbose mode is enabled
             if (verboseOutput)
             {
-                // EDID information
-                string manufacturer = monitor.ManufacturerName != null 
-                    ? $"[cyan]{monitor.ManufacturerName}[/]" 
-                    : "[dim]N/A[/]";
-                string model = monitor.ModelName != null 
-                    ? $"[cyan]{monitor.ModelName}[/]" 
-                    : "[dim]N/A[/]";
-                string serial = monitor.SerialNumber != null 
-                    ? $"[dim]{monitor.SerialNumber}[/]" 
-                    : "[dim]N/A[/]";
-                string mfgDate = monitor.ManufactureYear.HasValue 
-                    ? (monitor.ManufactureWeek.HasValue 
+                row.Add(Cyan(monitor.ManufacturerName));
+                row.Add(Cyan(monitor.ModelName));
+                row.Add(monitor.SerialNumber != null ? $"[dim]{Markup.Escape(monitor.SerialNumber)}[/]" : "[dim]N/A[/]");
+                row.Add(monitor.ManufactureYear.HasValue
+                    ? monitor.ManufactureWeek.HasValue
                         ? $"[dim]{monitor.ManufactureYear}/W{monitor.ManufactureWeek}[/]"
-                        : $"[dim]{monitor.ManufactureYear}[/]")
-                    : "[dim]N/A[/]";
-                
-                row.Add(manufacturer);
-                row.Add(model);
-                row.Add(serial);
-                row.Add(mfgDate);
-                row.Add(brightnessInfo);
-                row.Add(contrastInfo);
+                        : $"[dim]{monitor.ManufactureYear}[/]"
+                    : "[dim]N/A[/]");
+                row.Add(Percentage(probe.Brightness));
+                row.Add(Percentage(probe.Contrast));
             }
 
-            row.Add(status);
+            row.Add(probe.Status == DdcStatus.Ok
+                ? "[green]✓[/] [bold green]OK[/]"
+                : "[yellow]⚠[/] [bold yellow]No DDC/CI[/]");
 
             table.AddRow(row.ToArray());
         }
 
         AnsiConsole.Write(table);
     }
-}
 
+    private static string Cyan(string? value) => value != null ? $"[cyan]{Markup.Escape(value)}[/]" : "[dim]N/A[/]";
+
+    private static string Percentage(string? value) =>
+        value is null or "N/A" ? "[dim]N/A[/]" : $"[green]{value}[/]";
+}

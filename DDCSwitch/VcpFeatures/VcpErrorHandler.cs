@@ -114,7 +114,7 @@ public static class VcpErrorHandler
             0x00000121 => true, // ERROR_SEM_TIMEOUT  
             0x000005B4 => true, // ERROR_TIMEOUT (alternative)
             0x00000079 => true, // ERROR_SEM_TIMEOUT (alternative)
-            _ => false
+            _ => DdcErrors.IsCommunicationFailure(lastError) // monitor did not answer on the DDC/I2C bus
         };
     }
 
@@ -132,6 +132,7 @@ public static class VcpErrorHandler
             0x00000057 => true, // ERROR_INVALID_PARAMETER
             0x0000007A => true, // ERROR_INSUFFICIENT_BUFFER
             0x00000032 => true, // ERROR_NOT_SUPPORTED
+            DdcErrors.VcpNotSupported => true, // ERROR_GRAPHICS_DDCCI_VCP_NOT_SUPPORTED
             _ => false
         };
     }

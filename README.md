@@ -249,6 +249,8 @@ Create a desktop shortcut to quickly adjust settings:
 
 ### Monitor doesn't respond
 
+- Run the command with `--trace` (or set `DDCSWITCH_TRACE=1`) to log every DDC/CI call, its error code and timing to stderr
+- ddcswitch retries automatically when a monitor doesn't reply
 - DDC/CI can be slow - wait a few seconds between commands
 - Some monitors need to be on the target input at least once before DDC/CI can switch to it
 - Check monitor OSD settings for DDC/CI enable/disable options

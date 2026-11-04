@@ -39,7 +39,7 @@ internal static class SetCommand
             return HandleValidationError(validationError, jsonOutput);
         }
 
-        var monitors = MonitorController.EnumerateMonitors();
+        using var monitors = MonitorController.EnumerateMonitors();
 
         if (monitors.Count == 0)
         {
@@ -54,12 +54,6 @@ internal static class SetCommand
         }
 
         int result = SetFeatureValue(monitor, feature!, setValue, percentageValue, jsonOutput);
-
-        // Cleanup
-        foreach (var m in monitors)
-        {
-            m.Dispose();
-        }
 
         return result;
     }
@@ -173,7 +167,7 @@ internal static class SetCommand
         return 1;
     }
 
-    private static int HandleMonitorNotFound(List<Monitor> monitors, string monitorId, bool jsonOutput)
+    private static int HandleMonitorNotFound(IReadOnlyList<Monitor> monitors, string monitorId, bool jsonOutput)
     {
         if (jsonOutput)
         {
@@ -184,12 +178,6 @@ internal static class SetCommand
         {
             ConsoleOutputFormatter.WriteError($"Monitor '{monitorId}' not found.");
             AnsiConsole.MarkupLine("Use [yellow]ddcswitch list[/] to see available monitors.");
-        }
-
-        // Cleanup
-        foreach (var m in monitors)
-        {
-            m.Dispose();
         }
 
         return 1;

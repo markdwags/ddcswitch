@@ -2,6 +2,34 @@
 
 All notable changes to ddcswitch will be documented in this file.
 
+## [1.0.5] - 2026-11-04
+
+### Fixed
+- Monitors are now identified correctly: each monitor's EDID is read from its own device instance
+  (via `EnumDisplayDevices`) instead of being guessed from registry heuristics, which could give every
+  monitor the same name
+- Monitor 0 reported "No DDC/CI" and could not be controlled unless ControlMyMonitor was running.
+  dxva2 physical monitor handles are small integers from a pool shared across processes, so the first
+  monitor gets handle 0 when no other DDC/CI tool is open; ddcswitch treated 0 as an invalid handle
+  and never sent it any DDC/CI request. ControlMyMonitor "fixed" it by holding the low handle values
+- DDC/CI reads and writes retry up to 3 times when the monitor doesn't reply
+- `toggle` now reports an error when the current input can't be read, instead of silently switching to the
+  first input (a no-op whenever the monitor was already on it)
+- Monitors can be selected by name, model, hardware ID or display device (e.g. `toggle VG270U hdmi1 dp1`),
+  as the README already documented
+- A monitor that answers "not supported" for input select is no longer reported as "No DDC/CI"
+- Physical monitor handles are no longer leaked during enumeration
+
+### Added
+- `--trace` flag / `DDCSWITCH_TRACE=1` to log every DDC/CI call with error codes and timing to stderr
+
+### Changed
+- Enumeration no longer sends any DDC/CI traffic; only the targeted monitor is queried, making `toggle`,
+  `get` and `set` faster
+- Removed the 1 second pause after `toggle`
+- Added a unit test project (`DDCSwitch.Tests`)
+- Removed unused hardware-inspection and DDC/CI "identity" code
+
 ## [1.0.4] - 2026-01-09
 
 ### Added

@@ -5,7 +5,7 @@ namespace DDCSwitch.Commands;
 
 internal static class VcpScanCommand
 {
-    public static int ScanAllMonitors(List<Monitor> monitors, bool jsonOutput)
+    public static int ScanAllMonitors(IReadOnlyList<Monitor> monitors, bool jsonOutput)
     {
         if (jsonOutput)
         {
@@ -16,34 +16,12 @@ internal static class VcpScanCommand
             OutputTableScanAll(monitors);
         }
 
-        // Cleanup
-        foreach (var monitor in monitors)
-        {
-            monitor.Dispose();
-        }
-
         return 0;
     }
 
     public static int ScanSingleMonitor(string monitorIdentifier, bool jsonOutput)
     {
-        List<Monitor> monitors;
-
-        if (!jsonOutput)
-        {
-            monitors = null!;
-            AnsiConsole.Status()
-                .Start("Enumerating monitors...", ctx =>
-                {
-                    ctx.Spinner(Spinner.Known.Dots);
-                    ctx.SpinnerStyle(Style.Parse("cyan"));
-                    monitors = MonitorController.EnumerateMonitors();
-                });
-        }
-        else
-        {
-            monitors = MonitorController.EnumerateMonitors();
-        }
+        using var monitors = MonitorController.EnumerateMonitors();
 
         if (monitors.Count == 0)
         {
@@ -73,12 +51,6 @@ internal static class VcpScanCommand
             {
                 ConsoleOutputFormatter.WriteError($"Monitor '{monitorIdentifier}' not found.");
                 AnsiConsole.MarkupLine("Use [yellow]ddcswitch list[/] to see available monitors.");
-            }
-
-            // Cleanup
-            foreach (var m in monitors)
-            {
-                m.Dispose();
             }
 
             return 1;
@@ -145,16 +117,10 @@ internal static class VcpScanCommand
             result = 1;
         }
 
-        // Cleanup
-        foreach (var m in monitors)
-        {
-            m.Dispose();
-        }
-
         return result;
     }
 
-    private static void OutputJsonScanAll(List<Monitor> monitors)
+    private static void OutputJsonScanAll(IReadOnlyList<Monitor> monitors)
     {
         var scanResults = new List<VcpScanResponse>();
 
@@ -187,7 +153,7 @@ internal static class VcpScanCommand
         }
     }
 
-    private static void OutputTableScanAll(List<Monitor> monitors)
+    private static void OutputTableScanAll(IReadOnlyList<Monitor> monitors)
     {
         foreach (var monitor in monitors)
         {
