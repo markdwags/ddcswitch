@@ -1,0 +1,23 @@
+version: 2
+updates:
+  - package-ecosystem: nuget
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      nuget-minor-patch:
+        update-types: [minor, patch]
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      actions:
+        patterns: ["*"]
+
+  # Keeps global.json on the latest .NET SDK patch (security fixes ship in SDK/runtime patches).
+  - package-ecosystem: dotnet-sdk
+    directory: /
+    schedule:
+      interval: weekly

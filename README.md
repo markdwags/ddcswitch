@@ -17,12 +17,13 @@ choco install ddcswitch
 
 Or download `ddcswitch.exe` from [Releases](../../releases) and put it on your `PATH`.
 
-**Build from source** (.NET 10 SDK and the Visual Studio "Desktop development with C++" workload):
+**Build from source** (.NET SDK 10.0.403 or later, as pinned in `global.json`, and the Visual Studio "Desktop development with C++" workload):
 
 ```powershell
 git clone https://github.com/markdwags/ddcswitch.git
 cd ddcswitch
-.\build.ps1          # produces dist\ddcswitch.exe
+.\build.ps1                            # produces dist\ddcswitch.exe
+dotnet test --project DDCSwitch.Tests  # run the unit tests (no monitor needed)
 ```
 
 ## Usage

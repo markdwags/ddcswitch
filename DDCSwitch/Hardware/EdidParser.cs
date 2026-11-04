@@ -597,26 +597,20 @@ public static class EdidParser
 
         try
         {
-            // Chromaticity data is stored in bytes 25-34
-            // Each coordinate is a 10-bit value split between two bytes
-            byte lsb = edid[25]; // Low-order bits for red/green/blue/white X
-            byte lsb2 = edid[26]; // Low-order bits for red/green/blue/white Y
-            
-            // Red X/Y: 8 MSB bits in byte 27, 2 LSB bits in bytes 25/26
-            int redXRaw = (edid[27] << 2) | ((lsb >> 6) & 0x03);
-            int redYRaw = (edid[27] << 2) | ((lsb2 >> 6) & 0x03);
-            
-            // Green X/Y: 8 MSB bits in byte 28, 2 LSB bits in bytes 25/26
-            int greenXRaw = (edid[28] << 2) | ((lsb >> 4) & 0x03);
-            int greenYRaw = (edid[28] << 2) | ((lsb2 >> 4) & 0x03);
-            
-            // Blue X/Y: 8 MSB bits in byte 29, 2 LSB bits in bytes 25/26
-            int blueXRaw = (edid[29] << 2) | ((lsb >> 2) & 0x03);
-            int blueYRaw = (edid[29] << 2) | ((lsb2 >> 2) & 0x03);
-            
-            // White X/Y: 8 MSB bits in byte 30, 2 LSB bits in bytes 25/26
-            int whiteXRaw = (edid[30] << 2) | (lsb & 0x03);
-            int whiteYRaw = (edid[30] << 2) | (lsb2 & 0x03);
+            // Chromaticity data is stored in bytes 25-34 (EDID 1.4 section 3.7).
+            // Each coordinate is a 10-bit value: the 8 high bits have their own byte (27-34),
+            // the 2 low bits are packed into byte 25 (Rx Ry Gx Gy) and byte 26 (Bx By Wx Wy).
+            byte rgLow = edid[25];
+            byte bwLow = edid[26];
+
+            int redXRaw = (edid[27] << 2) | ((rgLow >> 6) & 0x03);
+            int redYRaw = (edid[28] << 2) | ((rgLow >> 4) & 0x03);
+            int greenXRaw = (edid[29] << 2) | ((rgLow >> 2) & 0x03);
+            int greenYRaw = (edid[30] << 2) | (rgLow & 0x03);
+            int blueXRaw = (edid[31] << 2) | ((bwLow >> 6) & 0x03);
+            int blueYRaw = (edid[32] << 2) | ((bwLow >> 4) & 0x03);
+            int whiteXRaw = (edid[33] << 2) | ((bwLow >> 2) & 0x03);
+            int whiteYRaw = (edid[34] << 2) | (bwLow & 0x03);
 
             // Convert 10-bit values to 0.0-1.0 range
             var red = new ColorPoint(redXRaw / 1024.0, redYRaw / 1024.0);

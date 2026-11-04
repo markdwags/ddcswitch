@@ -88,7 +88,7 @@ internal static class SetCommand
         return 1;
     }
 
-    private static (uint setValue, uint? percentageValue, string? validationError) ParseAndValidateValue(VcpFeature feature, string valueInput)
+    internal static (uint setValue, uint? percentageValue, string? validationError) ParseAndValidateValue(VcpFeature feature, string valueInput)
     {
         uint setValue = 0;
         uint? percentageValue = null;

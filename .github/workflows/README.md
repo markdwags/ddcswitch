@@ -1,143 +1,64 @@
 ﻿# GitHub Actions Workflows
 
-This directory contains GitHub Actions workflows for automated building and releasing of DDCSwitch.
+## ci-cd.yml: build, test and release
 
-## Workflows
+**Triggers:** pull requests to `main`, pushes to `main`, and manual dispatch.
+Feature branches are built through their pull request, so the same commit isn't built twice. A newer push
+to a pull request cancels that PR's run that is still in progress. Runs on `main` are never cancelled.
 
-### 🚀 ci-cd.yml - Continuous Integration and Deployment
+### `build` job (every run)
+1. Installs the .NET SDK pinned in `/global.json` and restores NuGet packages from cache.
+2. Restores the solution. **High or critical NuGet vulnerability advisories (NU1903/NU1904) fail the build.**
+3. Runs the unit tests (`DDCSwitch.Tests`, xUnit v3 on Microsoft.Testing.Platform) with coverlet coverage.
+   The test summary is posted to the job summary page. TRX and Cobertura files are uploaded as the
+   `test-results-<sha>` artifact (7 days).
+4. Publishes the NativeAOT `ddcswitch.exe`, checks that it exists, and smoke-runs `ddcswitch --json version`.
+5. Reads the version from `CHANGELOG.md` and checks whether tag `v<version>` already exists. The job
+   summary says whether merging will create a release.
+6. Uploads `ddcswitch.exe` as the `DDCSwitch-build-<sha>` artifact (7 days).
 
-**Triggers:**
-- Pull requests to `main` branch
-- Pushes to any branch
-- Push of version tags (e.g., `v1.0.0`)
-- Manual workflow dispatch
+### `release` job (push to `main` with a new version only)
+Runs only when the CHANGELOG version has **no tag yet**. Merges that don't bump the version don't release.
+1. Packages `ddcswitch-<version>-win-x64.zip` (exe, README, LICENSE, EXAMPLES, CHANGELOG) and computes its SHA256.
+2. Extracts that version's section of `CHANGELOG.md` as the release notes.
+3. Fills in the Chocolatey templates (version and checksum) and runs `choco pack`.
+4. Creates the GitHub Release and tag `v<version>` on the built commit, attaching the ZIP, the exe and the `.nupkg`.
+5. Uploads the `.nupkg` as an artifact (90 days).
 
-**What it does:**
+Only this job has `contents: write`. The rest of the workflow is read-only.
 
-#### Build Job (runs on all triggers)
-1. Builds the project in Debug configuration
-2. Builds the project in Release configuration with NativeAOT
-3. Verifies the executable was created successfully
-4. Shows the executable size
-5. Uploads the build artifact for 7 days
+## Releasing
 
-#### Release Job (only runs on pushes to `main`)
-1. Builds the NativeAOT executable for Windows x64
-2. Extracts version number from `CHANGELOG.md`
-3. Creates a release package with:
-   - `DDCSwitch.exe` (NativeAOT compiled)
-   - `README.md`
-   - `LICENSE`
-   - `EXAMPLES.md`
-   - `CHANGELOG.md`
-4. Creates a ZIP archive: `DDCSwitch-{version}-win-x64.zip`
-5. Generates release notes from the CHANGELOG
-6. Creates and pushes a version tag (if it doesn't exist)
-7. Creates a GitHub Release with the artifacts
-8. Uploads build artifacts for 30 days
-
-**Requirements:**
-- The first version in `CHANGELOG.md` must follow the format: `## [X.Y.Z] - YYYY-MM-DD`
-- Repository must have `contents: write` permissions (already configured)
-
-**Benefits of consolidation:**
-- Single workflow file to maintain
-- Build always runs before release (ensures quality)
-- Automatic release creation on every push to `main`
-- PR and feature branch testing still works
-- No duplicate build steps
-
-## Usage
-
-### Automatic Release on Merge to Main
-
-1. Update `CHANGELOG.md` with the new version:
+1. Add a new version at the top of `CHANGELOG.md`:
    ```markdown
-   ## [1.1.0] - 2026-01-15
-   
+   ## [1.2.3] - 2026-01-15
+
    ### Added
    - New feature description
    ```
+2. Open a pull request. CI builds and tests it, and the job summary says `v1.2.3` will be released.
+3. Merge. The `release` job creates tag `v1.2.3` and the GitHub Release.
 
-2. Commit and push to a feature branch
+The version must be the first `[X.Y.Z]` in `CHANGELOG.md`. The project file reads the same value for the
+assembly version.
 
-3. Create a pull request (this triggers `build.yml`)
+## Keeping dependencies current
 
-4. Once merged to `main`, `release.yml` automatically:
-   - Builds the release
-   - Creates tag `v1.1.0`
-   - Creates GitHub Release with artifacts
-
-### Manual Release Trigger
-
-You can also manually trigger a release from the GitHub Actions tab:
-1. Go to Actions → Build and Release
-2. Click "Run workflow"
-3. Select the `main` branch
-4. Click "Run workflow"
-
-## Version Management
-
-The version is automatically extracted from `CHANGELOG.md`. Ensure the latest version entry follows this format:
-
-```markdown
-## [1.2.3] - 2026-01-15
-```
-
-The workflow will:
-- Extract version `1.2.3`
-- Create tag `v1.2.3`
-- Create release named "DDCSwitch 1.2.3"
-
-## Build Artifacts
-
-### Release Artifacts (30 days retention)
-- Full release package with docs
-- Available in the workflow run summary
-
-### Build Artifacts (7 days retention)
-- Executable only from PR/branch builds
-- Useful for testing before merge
+`.github/dependabot.yml` opens weekly PRs for NuGet packages, GitHub Actions and the .NET SDK in `global.json`.
 
 ## Troubleshooting
 
-### "Could not find version in CHANGELOG.md"
-- Ensure `CHANGELOG.md` has a version entry matching `[X.Y.Z]`
-- The version should be the first one in the file
+- **"Could not find version in CHANGELOG.md"**: the first version heading must look like `## [X.Y.Z] - YYYY-MM-DD`.
+- **Release didn't run after a merge**: the version's tag already exists. Bump the version in `CHANGELOG.md`.
+- **NU1903 / NU1904 restore error**: a package (often the SDK-provided ILCompiler) has a known vulnerability.
+  Update the SDK in `global.json` or the package version.
+- **NativeAOT link fails locally with `'vswhere.exe' is not recognized`**: add
+  `%ProgramFiles(x86)%\Microsoft Visual Studio\Installer` to `PATH`.
 
-### "Tag already exists"
-- The workflow checks if the tag exists and skips tag creation
-- It will still create/update the release
-
-### NativeAOT Build Fails
-- Ensure the project has C++ build tools available
-- GitHub's `windows-latest` runners include these by default
-
-### Release Not Created
-- Check the workflow logs in Actions tab
-- Ensure `GITHUB_TOKEN` has write permissions
-- Verify the version format in CHANGELOG.md
-
-## Local Testing
-
-To test the build process locally:
+## Local equivalent
 
 ```powershell
-# Restore dependencies
-dotnet restore DDCSwitch/DDCSwitch.csproj
-
-# Build release (same as workflow)
+dotnet restore DDCSwitch.sln -r win-x64
+dotnet test --project DDCSwitch.Tests -c Release
 dotnet publish DDCSwitch/DDCSwitch.csproj -c Release -r win-x64
-
-# Check the output
-ls DDCSwitch/bin/Release/net10.0/win-x64/publish/
 ```
-
-## Permissions
-
-The workflows use:
-- `contents: write` - To create releases and push tags
-- `GITHUB_TOKEN` - Automatically provided by GitHub Actions
-
-No additional secrets or configuration needed!
-

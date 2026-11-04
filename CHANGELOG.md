@@ -19,6 +19,9 @@ All notable changes to ddcswitch will be documented in this file.
   as the README already documented
 - A monitor that answers "not supported" for input select is no longer reported as "No DDC/CI"
 - Physical monitor handles are no longer leaked during enumeration
+- `info` reported wrong EDID chromaticity: each color's y coordinate repeated its x coordinate (bytes 31-34
+  were never read). Coordinates are now decoded per the EDID 1.4 layout
+- GitHub release notes were truncated at the first `###` subsection of the changelog
 
 ### Added
 - `--trace` flag / `DDCSWITCH_TRACE=1` to log every DDC/CI call with error codes and timing to stderr
@@ -27,7 +30,12 @@ All notable changes to ddcswitch will be documented in this file.
 - Enumeration no longer sends any DDC/CI traffic; only the targeted monitor is queried, making `toggle`,
   `get` and `set` faster
 - Removed the 1 second pause after `toggle`
-- Added a unit test project (`DDCSwitch.Tests`)
+- Added a unit test project (`DDCSwitch.Tests`, xUnit v3), run on every CI build
+- Built with .NET SDK 10.0.403 (pinned in `global.json`), which patches the NativeAOT compiler for
+  GHSA-p3jp-9v83-76w9. Spectre.Console updated to 0.57.2
+- CI: tests and coverage on every PR, NuGet caching, superseded runs cancelled, least-privilege permissions,
+  and releases are created only when the changelog version is new. Release and Chocolatey packaging
+  now run in one job
 - Removed unused hardware-inspection and DDC/CI "identity" code
 
 ## [1.0.4] - 2026-01-09
