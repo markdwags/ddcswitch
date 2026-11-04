@@ -1,5 +1,5 @@
 using System.Text;
-using Microsoft.Win32;
+
 
 namespace DDCSwitch;
 
@@ -34,16 +34,30 @@ public record SupportedFeatures(
     bool DefaultColorSpace,
     bool PreferredTimingMode,
     bool ContinuousFrequency,
-    byte RawValue)
+    byte RawValue,
+    bool HasColorEncodingFormats = false)
 {
-    public string DisplayTypeDescription => DisplayType switch
-    {
-        0 => "Monochrome or Grayscale",
-        1 => "RGB Color",
-        2 => "Non-RGB Color",
-        3 => "Undefined",
-        _ => "Unknown"
-    };
+    /// <summary>
+    /// Bits 4-3 of byte 24. For digital inputs on EDID 1.4+ (<see cref="HasColorEncodingFormats"/>) they list the
+    /// supported color encodings; otherwise (analog, or EDID 1.3 and earlier) they give the display color type.
+    /// </summary>
+    public string DisplayTypeDescription => HasColorEncodingFormats
+        ? DisplayType switch
+        {
+            0 => "RGB 4:4:4",
+            1 => "RGB 4:4:4 + YCrCb 4:4:4",
+            2 => "RGB 4:4:4 + YCrCb 4:2:2",
+            3 => "RGB 4:4:4 + YCrCb 4:4:4 + YCrCb 4:2:2",
+            _ => "Unknown"
+        }
+        : DisplayType switch
+        {
+            0 => "Monochrome or Grayscale",
+            1 => "RGB Color",
+            2 => "Non-RGB Color",
+            3 => "Undefined",
+            _ => "Unknown"
+        };
 }
 
 /// <summary>
@@ -64,20 +78,6 @@ public record ChromaticityCoordinates(
     ColorPoint Green,
     ColorPoint Blue,
     ColorPoint White);
-
-/// <summary>
-/// Represents a registry EDID entry with metadata.
-/// </summary>
-/// <param name="RegistryPath">Full registry path to the EDID entry</param>
-/// <param name="EdidData">Raw EDID byte data</param>
-/// <param name="LastWriteTime">Last modification time of the registry entry</param>
-/// <param name="IsCurrentlyActive">Whether this entry corresponds to an active monitor</param>
-public record RegistryEdidEntry(
-    string RegistryPath,
-    byte[] EdidData,
-    DateTime LastWriteTime,
-    bool IsCurrentlyActive
-);
 
 /// <summary>
 /// Represents complete EDID information with metadata from enhanced parsing.
@@ -133,50 +133,10 @@ public record EdidColorInfo(
 
 /// <summary>
 /// Parses EDID (Extended Display Identification Data) blocks to extract monitor information.
-/// Enhanced with registry conflict resolution and active entry detection.
+/// EDID bytes are read by DisplayDeviceResolver from the monitor's own registry key.
 /// </summary>
 public static class EdidParser
 {
-    /// <summary>
-    /// Parses EDID information from registry with enhanced conflict resolution.
-    /// </summary>
-    /// <param name="deviceName">Device name from MONITORINFOEX (e.g., \\.\DISPLAY1)</param>
-    /// <returns>Complete EDID information or null if not found</returns>
-    public static ParsedEdidInfo? ParseFromRegistry(string deviceName)
-    {
-        var edidData = NativeMethods.GetEdidFromRegistry(deviceName);
-        if (edidData == null || edidData.Length < 128)
-            return null;
-
-        return ParseFromBytes(edidData, false);
-    }
-
-    /// <summary>
-    /// Parses EDID information from active registry entry using physical monitor handle.
-    /// </summary>
-    /// <param name="deviceName">Device name from MONITORINFOEX</param>
-    /// <param name="physicalMonitorHandle">Physical monitor handle for cross-referencing</param>
-    /// <returns>Complete EDID information from active entry or null if not found</returns>
-    public static ParsedEdidInfo? ParseFromActiveRegistry(string deviceName, IntPtr physicalMonitorHandle)
-    {
-        try
-        {
-            // Extract hardware ID from device name for registry lookup
-            string? hardwareId = ExtractHardwareIdFromDeviceName(deviceName);
-            if (hardwareId == null)
-                return null;
-
-            // Find the active registry entry for this hardware ID
-            var activeEntry = FindActiveRegistryEntry(hardwareId, physicalMonitorHandle);
-            
-            return activeEntry == null ? null : ParseFromBytes(activeEntry.EdidData, true);
-        }
-        catch
-        {
-            return null;
-        }
-    }
-
     /// <summary>
     /// Parses EDID information from raw byte data.
     /// </summary>
@@ -229,308 +189,6 @@ public static class EdidParser
         catch
         {
             return null;
-        }
-    }
-
-    /// <summary>
-    /// Finds all registry entries for a given hardware ID.
-    /// </summary>
-    /// <param name="hardwareId">Hardware ID to search for (format: ManufacturerKey\InstanceKey)</param>
-    /// <returns>List of all registry entries found for this hardware ID</returns>
-    public static List<RegistryEdidEntry> FindAllRegistryEntries(string hardwareId)
-    {
-        var entries = new List<RegistryEdidEntry>();
-
-        try
-        {
-            const string displayKey = @"SYSTEM\CurrentControlSet\Enum\DISPLAY";
-            using var displayRoot = Registry.LocalMachine.OpenSubKey(displayKey);
-            if (displayRoot == null) return entries;
-
-            // Parse hardware ID (format: ManufacturerKey\InstanceKey)
-            var parts = hardwareId.Split('\\');
-            if (parts.Length != 2) return entries;
-
-            string mfgKey = parts[0];
-            string targetInstanceKey = parts[1];
-
-            using var mfgSubKey = displayRoot.OpenSubKey(mfgKey);
-            if (mfgSubKey == null) return entries;
-
-            // Look for the specific instance and similar instances (for conflict detection)
-            foreach (string instanceKey in mfgSubKey.GetSubKeyNames())
-            {
-                // Include exact match and similar instances (same base hardware ID)
-                if (instanceKey == targetInstanceKey || 
-                    instanceKey.StartsWith(targetInstanceKey.Split('&')[0], StringComparison.OrdinalIgnoreCase))
-                {
-                    using var instanceSubKey = mfgSubKey.OpenSubKey(instanceKey);
-                    if (instanceSubKey == null) continue;
-
-                    using var deviceParams = instanceSubKey.OpenSubKey("Device Parameters");
-                    if (deviceParams == null) continue;
-
-                    // Read EDID data
-                    if (deviceParams.GetValue("EDID") is not byte[] edidData || edidData.Length < 128)
-                        continue;
-
-                    // Validate EDID header
-                    if (!ValidateHeader(edidData))
-                        continue;
-
-                    // Get registry entry metadata
-                    var registryPath = $@"{displayKey}\{mfgKey}\{instanceKey}";
-                    var lastWriteTime = GetRegistryKeyLastWriteTime(instanceSubKey) ?? DateTime.MinValue;
-
-                    entries.Add(new RegistryEdidEntry(
-                        registryPath,
-                        edidData,
-                        lastWriteTime,
-                        instanceKey == targetInstanceKey // Mark as active if exact match
-                    ));
-                }
-            }
-        }
-        catch
-        {
-            // Return partial results on error
-        }
-
-        return entries;
-    }
-
-    /// <summary>
-    /// Finds the active registry entry for a hardware ID using physical monitor handle.
-    /// </summary>
-    /// <param name="hardwareId">Hardware ID to search for</param>
-    /// <param name="physicalMonitorHandle">Physical monitor handle for cross-referencing</param>
-    /// <returns>Active registry entry or null if not found</returns>
-    public static RegistryEdidEntry? FindActiveRegistryEntry(string hardwareId, IntPtr physicalMonitorHandle)
-    {
-        var allEntries = FindAllRegistryEntries(hardwareId);
-        if (allEntries.Count == 0)
-            return null;
-
-        // If only one entry, assume it's active
-        if (allEntries.Count == 1)
-        {
-            var entry = allEntries[0];
-            return entry with { IsCurrentlyActive = true };
-        }
-
-        // Multiple entries - use heuristics to determine active one
-        var activeEntry = ResolveRegistryConflicts(allEntries, physicalMonitorHandle);
-        if (activeEntry != null)
-        {
-            return activeEntry with { IsCurrentlyActive = true };
-        }
-
-        // Fallback: return most recently modified entry
-        var mostRecent = allEntries.OrderByDescending(e => e.LastWriteTime).First();
-        return mostRecent with { IsCurrentlyActive = true };
-    }
-
-    /// <summary>
-    /// Resolves conflicts when multiple registry entries exist for the same hardware ID.
-    /// </summary>
-    /// <param name="entries">List of conflicting registry entries</param>
-    /// <param name="physicalMonitorHandle">Physical monitor handle for cross-referencing</param>
-    /// <returns>The most likely active entry or null if cannot be determined</returns>
-    private static RegistryEdidEntry? ResolveRegistryConflicts(List<RegistryEdidEntry> entries, IntPtr physicalMonitorHandle)
-    {
-        if (entries.Count <= 1)
-            return entries.FirstOrDefault();
-
-        // Strategy 1: Use physical monitor handle to cross-reference with registry
-        // This is a simplified approach - in a full implementation, we would use
-        // Windows APIs to map physical monitor handles to registry entries
-        
-        // Strategy 2: Prefer entries with more recent timestamps
-        var recentEntries = entries
-            .Where(e => e.LastWriteTime > DateTime.Now.AddDays(-30)) // Within last 30 days
-            .OrderByDescending(e => e.LastWriteTime)
-            .ToList();
-
-        if (recentEntries.Count > 0)
-            return recentEntries.First();
-
-        // Strategy 3: Prefer entries with valid EDID data and complete information
-        var validEntries = entries
-            .Where(e => HasCompleteEdidInfo(e.EdidData))
-            .OrderByDescending(e => e.LastWriteTime)
-            .ToList();
-
-        if (validEntries.Count > 0)
-            return validEntries.First();
-
-        // Fallback: return most recent entry
-        return entries.OrderByDescending(e => e.LastWriteTime).FirstOrDefault();
-    }
-
-    /// <summary>
-    /// Checks if EDID data contains complete information.
-    /// </summary>
-    /// <param name="edidData">EDID byte array</param>
-    /// <returns>True if EDID contains manufacturer, product, and other key information</returns>
-    private static bool HasCompleteEdidInfo(byte[] edidData)
-    {
-        if (edidData == null || edidData.Length < 128)
-            return false;
-
-        var manufacturerId = ParseManufacturerId(edidData);
-        var productCode = ParseProductCode(edidData);
-        var modelName = ParseModelName(edidData);
-
-        return !string.IsNullOrEmpty(manufacturerId) && 
-               productCode.HasValue && 
-               productCode.Value != 0 &&
-               (!string.IsNullOrEmpty(modelName) || ParseNumericSerialNumber(edidData).HasValue);
-    }
-
-    /// <summary>
-    /// Extracts hardware ID from Windows device name using proper Windows APIs.
-    /// </summary>
-    /// <param name="deviceName">Device name (e.g., \\.\DISPLAY1)</param>
-    /// <returns>Hardware ID or null if cannot be extracted</returns>
-    private static string? ExtractHardwareIdFromDeviceName(string deviceName)
-    {
-        try
-        {
-            // For now, we'll use a more sophisticated approach to map device names to hardware IDs
-            // This involves checking which registry entries correspond to currently active displays
-            
-            // Extract display number from device name (e.g., \\.\DISPLAY1 -> 1)
-            string displayNum = deviceName.Replace(@"\\.\DISPLAY", "");
-            if (!int.TryParse(displayNum, out int displayIndex))
-                return null;
-
-            // Get all currently active display devices and their registry paths
-            var activeDisplays = GetActiveDisplayDevices();
-            
-            // Find the hardware ID for the display at the given index
-            if (displayIndex > 0 && displayIndex <= activeDisplays.Count)
-            {
-                return activeDisplays[displayIndex - 1]; // Convert to 0-based index
-            }
-
-            return null;
-        }
-        catch
-        {
-            return null;
-        }
-    }
-
-    /// <summary>
-    /// Gets hardware IDs for all currently active display devices.
-    /// </summary>
-    /// <returns>List of hardware IDs for active displays</returns>
-    private static List<string> GetActiveDisplayDevices()
-    {
-        var activeDisplays = new List<string>();
-        
-        try
-        {
-            // This is a simplified implementation. In a full implementation, we would use
-            // EnumDisplayDevices and SetupDi APIs to get the actual hardware IDs.
-            // For now, we'll use a heuristic based on registry timestamps and validation.
-            
-            const string displayKey = @"SYSTEM\CurrentControlSet\Enum\DISPLAY";
-            using var displayRoot = Registry.LocalMachine.OpenSubKey(displayKey);
-            if (displayRoot == null) return activeDisplays;
-
-            var candidateEntries = new List<(string hardwareId, DateTime lastWrite, byte[] edid)>();
-
-            // Collect all valid EDID entries with their metadata
-            foreach (string mfgKey in displayRoot.GetSubKeyNames())
-            {
-                using var mfgSubKey = displayRoot.OpenSubKey(mfgKey);
-                if (mfgSubKey == null) continue;
-
-                foreach (string instanceKey in mfgSubKey.GetSubKeyNames())
-                {
-                    using var instanceSubKey = mfgSubKey.OpenSubKey(instanceKey);
-                    if (instanceSubKey == null) continue;
-
-                    using var deviceParams = instanceSubKey.OpenSubKey("Device Parameters");
-                    if (deviceParams == null) continue;
-
-                    var edidData = deviceParams.GetValue("EDID") as byte[];
-                    if (edidData == null || edidData.Length < 128 || !ValidateHeader(edidData))
-                        continue;
-
-                    // Check if this entry has recent activity (heuristic for active device)
-                    var lastWrite = GetRegistryKeyLastWriteTime(instanceSubKey) ?? DateTime.MinValue;
-                    
-                    // Use a combination of manufacturer key and instance as hardware ID
-                    string hardwareId = $"{mfgKey}\\{instanceKey}";
-                    
-                    candidateEntries.Add((hardwareId, lastWrite, edidData));
-                }
-            }
-
-            // Sort by last write time (most recent first) and take the most recent entries
-            // This heuristic assumes that recently modified registry entries correspond to active monitors
-            var sortedEntries = candidateEntries
-                .OrderByDescending(e => e.lastWrite)
-                .Take(10) // Reasonable limit for number of monitors
-                .ToList();
-
-            // Further filter by checking for unique EDID signatures
-            var uniqueEdids = new HashSet<string>();
-            foreach (var entry in sortedEntries)
-            {
-                // Create a signature from manufacturer ID and product code
-                var manufacturerId = ParseManufacturerId(entry.edid);
-                var productCode = ParseProductCode(entry.edid);
-                var signature = $"{manufacturerId}_{productCode:X4}";
-                
-                if (!uniqueEdids.Contains(signature))
-                {
-                    uniqueEdids.Add(signature);
-                    activeDisplays.Add(entry.hardwareId);
-                }
-            }
-
-            return activeDisplays;
-        }
-        catch
-        {
-            return activeDisplays;
-        }
-    }
-
-    /// <summary>
-    /// Gets the last write time of a registry key using heuristics.
-    /// </summary>
-    /// <param name="key">Registry key</param>
-    /// <returns>Last write time or null if cannot be determined</returns>
-    private static DateTime? GetRegistryKeyLastWriteTime(RegistryKey key)
-    {
-        try
-        {
-            // Since we can't directly get registry key timestamps in .NET without P/Invoke,
-            // we'll use a heuristic based on the registry structure and common patterns
-            
-            // Check if there are any subkeys with timestamps we can infer from
-            var subKeyNames = key.GetSubKeyNames();
-            var valueNames = key.GetValueNames();
-            
-            // If the key has many subkeys or values, it's likely more recent
-            // This is a rough heuristic - in practice, we'd use RegQueryInfoKey API
-            
-            if (subKeyNames.Length > 0 || valueNames.Length > 0)
-            {
-                // Assume recent activity if the key has content
-                return DateTime.Now.AddDays(-1); // Assume modified within last day
-            }
-            
-            // Fallback to a reasonable default
-            return DateTime.Now.AddDays(-30);
-        }
-        catch
-        {
-            return DateTime.Now.AddDays(-30);
         }
     }
 
@@ -926,6 +584,10 @@ public static class EdidParser
             bool preferredTimingMode = (value & 0x02) != 0; // Bit 1
             bool continuousFrequency = (value & 0x01) != 0; // Bit 0
 
+            // EDID 1.4 redefined bits 4-3 for digital inputs (byte 20 bit 7) as supported color encodings.
+            bool isDigital = (edid[20] & 0x80) != 0;
+            bool isEdid14OrLater = edid[18] > 1 || (edid[18] == 1 && edid[19] >= 4);
+
             return new SupportedFeatures(
                 dpmsStandby,
                 dpmsSuspend,
@@ -934,7 +596,8 @@ public static class EdidParser
                 defaultColorSpace,
                 preferredTimingMode,
                 continuousFrequency,
-                value);
+                value,
+                HasColorEncodingFormats: isDigital && isEdid14OrLater);
         }
         catch
         {
@@ -953,26 +616,20 @@ public static class EdidParser
 
         try
         {
-            // Chromaticity data is stored in bytes 25-34
-            // Each coordinate is a 10-bit value split between two bytes
-            byte lsb = edid[25]; // Low-order bits for red/green/blue/white X
-            byte lsb2 = edid[26]; // Low-order bits for red/green/blue/white Y
-            
-            // Red X/Y: 8 MSB bits in byte 27, 2 LSB bits in bytes 25/26
-            int redXRaw = (edid[27] << 2) | ((lsb >> 6) & 0x03);
-            int redYRaw = (edid[27] << 2) | ((lsb2 >> 6) & 0x03);
-            
-            // Green X/Y: 8 MSB bits in byte 28, 2 LSB bits in bytes 25/26
-            int greenXRaw = (edid[28] << 2) | ((lsb >> 4) & 0x03);
-            int greenYRaw = (edid[28] << 2) | ((lsb2 >> 4) & 0x03);
-            
-            // Blue X/Y: 8 MSB bits in byte 29, 2 LSB bits in bytes 25/26
-            int blueXRaw = (edid[29] << 2) | ((lsb >> 2) & 0x03);
-            int blueYRaw = (edid[29] << 2) | ((lsb2 >> 2) & 0x03);
-            
-            // White X/Y: 8 MSB bits in byte 30, 2 LSB bits in bytes 25/26
-            int whiteXRaw = (edid[30] << 2) | (lsb & 0x03);
-            int whiteYRaw = (edid[30] << 2) | (lsb2 & 0x03);
+            // Chromaticity data is stored in bytes 25-34 (EDID 1.4 section 3.7).
+            // Each coordinate is a 10-bit value: the 8 high bits have their own byte (27-34),
+            // the 2 low bits are packed into byte 25 (Rx Ry Gx Gy) and byte 26 (Bx By Wx Wy).
+            byte rgLow = edid[25];
+            byte bwLow = edid[26];
+
+            int redXRaw = (edid[27] << 2) | ((rgLow >> 6) & 0x03);
+            int redYRaw = (edid[28] << 2) | ((rgLow >> 4) & 0x03);
+            int greenXRaw = (edid[29] << 2) | ((rgLow >> 2) & 0x03);
+            int greenYRaw = (edid[30] << 2) | (rgLow & 0x03);
+            int blueXRaw = (edid[31] << 2) | ((bwLow >> 6) & 0x03);
+            int blueYRaw = (edid[32] << 2) | ((bwLow >> 4) & 0x03);
+            int whiteXRaw = (edid[33] << 2) | ((bwLow >> 2) & 0x03);
+            int whiteYRaw = (edid[34] << 2) | (bwLow & 0x03);
 
             // Convert 10-bit values to 0.0-1.0 range
             var red = new ColorPoint(redXRaw / 1024.0, redYRaw / 1024.0);

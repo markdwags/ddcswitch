@@ -6,284 +6,190 @@ on:
       - main
   push:
     branches:
-      - '**'
-    tags:
-      - 'v*.*.*'
+      - main
   workflow_dispatch:
 
+# Least privilege by default; only the release job can write.
 permissions:
-  contents: write
+  contents: read
+
+# Superseded PR/branch runs are cancelled; runs on main always finish (they may be releasing).
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+env:
+  DOTNET_NOLOGO: true
+  DOTNET_CLI_TELEMETRY_OPTOUT: true
+  DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true
+  PUBLISH_DIR: DDCSwitch/bin/Release/net10.0/win-x64/publish
 
 jobs:
   build:
     runs-on: windows-latest
-    
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      release_needed: ${{ steps.version.outputs.release_needed }}
+
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
+        uses: actions/checkout@v7
 
-      - name: Setup .NET
-        uses: actions/setup-dotnet@v4
+      - name: Setup .NET (from global.json)
+        uses: actions/setup-dotnet@v6
         with:
-          dotnet-version: '10.0.x'
+          global-json-file: global.json
 
-      - name: Restore dependencies with runtime
-        run: dotnet restore DDCSwitch/DDCSwitch.csproj -r win-x64
+      - name: Cache NuGet packages
+        uses: actions/cache@v6
+        with:
+          path: ~/.nuget/packages
+          key: nuget-${{ runner.os }}-${{ hashFiles('global.json', '**/*.csproj') }}
+          restore-keys: nuget-${{ runner.os }}-
+
+      - name: Restore
+        # High/critical NuGet advisories fail the build instead of scrolling by as warnings.
+        run: dotnet restore DDCSwitch.sln -r win-x64 "-p:WarningsAsErrors=NU1903%3BNU1904"
+
+      - name: Test
+        run: >
+          dotnet test --project DDCSwitch.Tests -c Release --no-restore
+          --results-directory TestResults
+          --report-xunit-trx
+          --report-xunit-markdown --report-xunit-markdown-filename summary.md
+          --coverlet --coverlet-output-format cobertura
+
+      - name: Publish test summary
+        if: ${{ !cancelled() }}
+        shell: pwsh
+        run: |
+          if (Test-Path TestResults/summary.md) { Get-Content TestResults/summary.md >> $env:GITHUB_STEP_SUMMARY }
+
+      - name: Upload test results
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: test-results-${{ github.sha }}
+          path: TestResults/
+          retention-days: 7
 
       - name: Build Release (NativeAOT)
         run: dotnet publish DDCSwitch/DDCSwitch.csproj -c Release -r win-x64 --no-restore
 
-      - name: Verify executable exists
+      - name: Verify executable
         shell: pwsh
         run: |
-          $exePath = "DDCSwitch/bin/Release/net10.0/win-x64/publish/ddcswitch.exe"
-          if (Test-Path $exePath) {
-            $size = (Get-Item $exePath).Length / 1MB
-            Write-Host "✓ Build successful! Executable size: $([math]::Round($size, 2)) MB"
-            Write-Host "Path: $exePath"
+          $exe = "$env:PUBLISH_DIR/ddcswitch.exe"
+          if (-not (Test-Path $exe)) { Write-Error "Build failed - $exe not found"; exit 1 }
+          $size = [math]::Round((Get-Item $exe).Length / 1MB, 2)
+          Write-Host "✓ Executable size: $size MB"
+          # Smoke test: the AOT binary starts and runs (no monitors are needed for this command).
+          & $exe --json version
+          if ($LASTEXITCODE -ne 0) { Write-Error "ddcswitch.exe version exited with $LASTEXITCODE"; exit 1 }
+
+      - name: Determine version and whether to release
+        id: version
+        shell: pwsh
+        run: |
+          $changelog = Get-Content CHANGELOG.md -Raw
+          if ($changelog -notmatch '\[(\d+\.\d+\.\d+)\]') { Write-Error "Could not find version in CHANGELOG.md"; exit 1 }
+          $version = $matches[1]
+          $tagExists = [bool](git ls-remote --tags origin "refs/tags/v$version")
+          "version=$version" >> $env:GITHUB_OUTPUT
+          "release_needed=$((-not $tagExists).ToString().ToLower())" >> $env:GITHUB_OUTPUT
+          if ($tagExists) {
+            "Version **$version** is already released; merging to main will not create a release." >> $env:GITHUB_STEP_SUMMARY
           } else {
-            Write-Host "✗ Build failed - executable not found"
-            exit 1
+            "Version **$version** is new; merging to main will release **v$version**." >> $env:GITHUB_STEP_SUMMARY
           }
 
       - name: Upload build artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: DDCSwitch-build-${{ github.sha }}
-          path: DDCSwitch/bin/Release/net10.0/win-x64/publish/ddcswitch.exe
+          path: ${{ env.PUBLISH_DIR }}/ddcswitch.exe
           retention-days: 7
 
   release:
     needs: build
     runs-on: windows-latest
-    # Only run release job when pushing to main branch
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    
+    # Only when main gets a CHANGELOG version that has no tag yet.
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.build.outputs.release_needed == 'true'
+    permissions:
+      contents: write
+    env:
+      VERSION: ${{ needs.build.outputs.version }}
+
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
+        uses: actions/checkout@v7
 
       - name: Download build artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: DDCSwitch-build-${{ github.sha }}
           path: artifact/
 
-      - name: Get version from changelog
-        id: get_version
+      - name: Package release
+        id: package
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path release | Out-Null
+          Copy-Item artifact/ddcswitch.exe, README.md, LICENSE, EXAMPLES.md, CHANGELOG.md release/
+          $zip = "ddcswitch-$env:VERSION-win-x64.zip"
+          Compress-Archive -Path release/* -DestinationPath $zip
+          $checksum = (Get-FileHash $zip -Algorithm SHA256).Hash
+          "zip=$zip" >> $env:GITHUB_OUTPUT
+          "checksum=$checksum" >> $env:GITHUB_OUTPUT
+          Write-Host "SHA256 ($zip): $checksum"
+
+      - name: Extract release notes
         shell: pwsh
         run: |
           $changelog = Get-Content CHANGELOG.md -Raw
-          if ($changelog -match '\[(\d+\.\d+\.\d+)\]') {
-            $version = $matches[1]
-            echo "version=$version" >> $env:GITHUB_OUTPUT
-            echo "tag=v$version" >> $env:GITHUB_OUTPUT
-            echo "Found version: $version"
-          } else {
-            echo "Error: Could not find version in CHANGELOG.md"
-            exit 1
-          }
+          $escaped = [regex]::Escape($env:VERSION)
+          # Everything between this version's "## [x.y.z]" heading and the next "## [" heading.
+          $match = [regex]::Match($changelog, "(?ms)^## \[$escaped\][^\n]*\n(.*?)(?=^## \[|\z)")
+          $notes = if ($match.Success -and $match.Groups[1].Value.Trim()) { $match.Groups[1].Value.Trim() } else { "Release version $env:VERSION" }
+          Set-Content -Path release-notes.md -Value $notes -Encoding utf8
 
-      - name: Create release directory
+      - name: Build Chocolatey package
         shell: pwsh
         run: |
-          New-Item -ItemType Directory -Force -Path release
-          Copy-Item artifact/ddcswitch.exe release/
-          Copy-Item README.md release/
-          Copy-Item LICENSE release/
-          Copy-Item EXAMPLES.md release/
-          Copy-Item CHANGELOG.md release/
-
-      - name: Create ZIP archive
-        shell: pwsh
-        run: |
-          $version = "${{ steps.get_version.outputs.version }}"
-          Compress-Archive -Path release/* -DestinationPath "ddcswitch-$version-win-x64.zip"
-
-      - name: Generate release notes
-        id: release_notes
-        shell: pwsh
-        run: |
-          $changelog = Get-Content CHANGELOG.md -Raw
-          $version = "${{ steps.get_version.outputs.version }}"
-          
-          # Extract the section for the current version
-          if ($changelog -match "(?s)\[$version\].*?\n(.*?)(?=\n##|\z)") {
-            $notes = $matches[1].Trim()
-            # Escape special characters for GitHub Actions output
-            $notes = $notes -replace '%','%25' -replace '\n','%0A' -replace '\r','%0D'
-            echo "notes=$notes" >> $env:GITHUB_OUTPUT
-          } else {
-            echo "notes=Release version $version" >> $env:GITHUB_OUTPUT
-          }
-
-      - name: Check if tag exists
-        id: check_tag
-        shell: pwsh
-        run: |
-          $tag = "${{ steps.get_version.outputs.tag }}"
-          git fetch --tags
-          $tagExists = git tag -l $tag
-          if ($tagExists) {
-            echo "exists=true" >> $env:GITHUB_OUTPUT
-            echo "Tag $tag already exists"
-          } else {
-            echo "exists=false" >> $env:GITHUB_OUTPUT
-            echo "Tag $tag does not exist"
-          }
-
-      - name: Create and push tag
-        if: steps.check_tag.outputs.exists == 'false'
-        shell: pwsh
-        run: |
-          $tag = "${{ steps.get_version.outputs.tag }}"
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git tag -a $tag -m "Release $tag"
-          git push origin $tag
-
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ steps.get_version.outputs.tag }}
-          name: ddcswitch ${{ steps.get_version.outputs.version }}
-          body: ${{ steps.release_notes.outputs.notes }}
-          draft: false
-          prerelease: false
-          files: |
-            ddcswitch-${{ steps.get_version.outputs.version }}-win-x64.zip
-            release/ddcswitch.exe
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Upload build artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: ddcswitch-${{ steps.get_version.outputs.version }}-win-x64
-          path: release/
-          retention-days: 30
-
-  chocolatey-package:
-    needs: release
-    runs-on: windows-latest
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Get version from changelog
-        id: get_version
-        shell: pwsh
-        run: |
-          $changelog = Get-Content CHANGELOG.md -Raw
-          if ($changelog -match '\[(\d+\.\d+\.\d+)\]') {
-            $version = $matches[1]
-            echo "version=$version" >> $env:GITHUB_OUTPUT
-            echo "Found version: $version"
-          } else {
-            echo "Error: Could not find version in CHANGELOG.md"
-            exit 1
-          }
-
-      - name: Calculate checksum
-        id: checksum
-        shell: pwsh
-        run: |
-          $version = "${{ steps.get_version.outputs.version }}"
-          $url = "https://github.com/markdwags/ddcswitch/releases/download/v$version/ddcswitch-$version-win-x64.zip"
-          $tempFile = "$env:TEMP\ddcswitch-$version.zip"
-          
-          Write-Host "Downloading ZIP from: $url"
-          Start-Sleep -Seconds 2  # Give GitHub a moment to make the release available
-          
-          # Retry logic for download
-          $maxRetries = 5
-          $retryCount = 0
-          $downloaded = $false
-          
-          while (-not $downloaded -and $retryCount -lt $maxRetries) {
-            try {
-              Invoke-WebRequest -Uri $url -OutFile $tempFile -ErrorAction Stop
-              $downloaded = $true
-            } catch {
-              $retryCount++
-              Write-Host "Download attempt $retryCount failed. Retrying in 10 seconds..."
-              Start-Sleep -Seconds 10
-            }
-          }
-          
-          if (-not $downloaded) {
-            Write-Host "Failed to download after $maxRetries attempts"
-            exit 1
-          }
-          
-          $hash = Get-FileHash $tempFile -Algorithm SHA256
-          $checksum = $hash.Hash
-          echo "checksum=$checksum" >> $env:GITHUB_OUTPUT
-          Write-Host "SHA256 Checksum: $checksum"
-          Remove-Item $tempFile
-
-      - name: Update Chocolatey files with version and checksum
-        shell: pwsh
-        run: |
-          $version = "${{ steps.get_version.outputs.version }}"
-          $checksum = "${{ steps.checksum.outputs.checksum }}"
-          
-          # Update version in nuspec (Chocolatey will pass to scripts via $env:chocolateyPackageVersion)
-          (Get-Content chocolatey\ddcswitch.nuspec -Raw) -replace '__VERSION__', $version | Set-Content chocolatey\ddcswitch.nuspec -NoNewline
-          
-          # Embed checksum directly in install script (required by Chocolatey validation CPMR0073)
+          $checksum = "${{ steps.package.outputs.checksum }}"
+          (Get-Content chocolatey\ddcswitch.nuspec -Raw) -replace '__VERSION__', $env:VERSION | Set-Content chocolatey\ddcswitch.nuspec -NoNewline
+          # Checksum is embedded in the install script (Chocolatey validation CPMR0073)
           (Get-Content chocolatey\tools\chocolateyinstall.ps1 -Raw) -replace '__CHECKSUM__', $checksum | Set-Content chocolatey\tools\chocolateyinstall.ps1 -NoNewline
-          
-          # Update VERIFICATION.txt for moderators
-          (Get-Content chocolatey\tools\VERIFICATION.txt -Raw) -replace '__VERSION__', $version -replace '__CHECKSUM__', $checksum | Set-Content chocolatey\tools\VERIFICATION.txt -NoNewline
-          
-          Write-Host "✓ Updated Chocolatey files"
-          Write-Host "  Version: $version (in nuspec, passed via env to scripts)"
-          Write-Host "  Checksum: $checksum (embedded in chocolateyinstall.ps1)"
+          (Get-Content chocolatey\tools\VERIFICATION.txt -Raw) -replace '__VERSION__', $env:VERSION -replace '__CHECKSUM__', $checksum | Set-Content chocolatey\tools\VERIFICATION.txt -NoNewline
 
-      - name: Install Chocolatey
-        shell: pwsh
-        run: |
           if (-not (Get-Command choco -ErrorAction SilentlyContinue)) {
-            Write-Host "Installing Chocolatey..."
             Set-ExecutionPolicy Bypass -Scope Process -Force
             [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072
             iex ((New-Object System.Net.WebClient).DownloadString('https://community.chocolatey.org/install.ps1'))
-          } else {
-            Write-Host "Chocolatey is already installed"
           }
 
-      - name: Create Chocolatey package
-        shell: pwsh
-        run: |
-          cd chocolatey
+          Push-Location chocolatey
           choco pack
-          $version = "${{ steps.get_version.outputs.version }}"
-          if (Test-Path "ddcswitch.$version.nupkg") {
-            Write-Host "✓ Successfully created ddcswitch.$version.nupkg"
-          } else {
-            Write-Host "✗ Failed to create package"
-            exit 1
-          }
+          Pop-Location
+          if (-not (Test-Path "chocolatey/ddcswitch.$env:VERSION.nupkg")) { Write-Error "Failed to create Chocolatey package"; exit 1 }
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v3
+        with:
+          tag_name: v${{ env.VERSION }}
+          target_commitish: ${{ github.sha }}
+          name: ddcswitch ${{ env.VERSION }}
+          body_path: release-notes.md
+          make_latest: true
+          fail_on_unmatched_files: true
+          files: |
+            ${{ steps.package.outputs.zip }}
+            release/ddcswitch.exe
+            chocolatey/ddcswitch.${{ env.VERSION }}.nupkg
 
       - name: Upload Chocolatey package
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
-          name: chocolatey-package-${{ steps.get_version.outputs.version }}
+          name: chocolatey-package-${{ env.VERSION }}
           path: chocolatey/*.nupkg
           retention-days: 90
-
-      - name: Upload to GitHub Release
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: v${{ steps.get_version.outputs.version }}
-          files: chocolatey/*.nupkg
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-

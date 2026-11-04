@@ -64,14 +64,15 @@ public static class InputSource
     {
         value = 0;
         // Try direct hex or numeric parsing first
+        // 0 is not a valid input source, so it is rejected for numeric forms too.
         if (input.StartsWith("0x", StringComparison.OrdinalIgnoreCase))
         {
-            return uint.TryParse(input[2..], System.Globalization.NumberStyles.HexNumber, null, out value);
+            return uint.TryParse(input[2..], System.Globalization.NumberStyles.HexNumber, null, out value) && value != 0;
         }
 
         if (uint.TryParse(input, out value))
         {
-            return true;
+            return value != 0;
         }
 
         // Try friendly name matching (case-insensitive)

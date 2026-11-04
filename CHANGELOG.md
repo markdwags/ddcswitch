@@ -2,6 +2,45 @@
 
 All notable changes to ddcswitch will be documented in this file.
 
+## [1.0.5] - 2026-11-04
+
+### Fixed
+- Monitors are now identified correctly: each monitor's EDID is read from its own device instance
+  (via `EnumDisplayDevices`) instead of being guessed from registry heuristics, which could give every
+  monitor the same name
+- Monitor 0 reported "No DDC/CI" and could not be controlled unless ControlMyMonitor was running.
+  dxva2 physical monitor handles are small integers from a pool shared across processes, so the first
+  monitor gets handle 0 when no other DDC/CI tool is open; ddcswitch treated 0 as an invalid handle
+  and never sent it any DDC/CI request. ControlMyMonitor "fixed" it by holding the low handle values
+- DDC/CI reads and writes retry up to 3 times when the monitor doesn't reply
+- `toggle` now reports an error when the current input can't be read, instead of silently switching to the
+  first input (a no-op whenever the monitor was already on it)
+- Monitors can be selected by name, model, hardware ID or display device (e.g. `toggle VG270U hdmi1 dp1`),
+  as the README already documented
+- A monitor that answers "not supported" for input select is no longer reported as "No DDC/CI"
+- Physical monitor handles are no longer leaked during enumeration
+- `info` reported wrong EDID chromaticity: each color's y coordinate repeated its x coordinate (bytes 31-34
+  were never read). Coordinates are now decoded per the EDID 1.4 layout
+- `info` showed display type "Undefined" for most digital monitors. For digital EDID 1.4 monitors those
+  bits list the supported color encodings, which are now shown instead (e.g. `RGB 4:4:4 + YCrCb 4:4:4 +
+  YCrCb 4:2:2`); the `displayType` value in `info --json` changes accordingly
+- GitHub release notes were truncated at the first `###` subsection of the changelog
+
+### Added
+- `--trace` flag / `DDCSWITCH_TRACE=1` to log every DDC/CI call with error codes and timing to stderr
+
+### Changed
+- Enumeration no longer sends any DDC/CI traffic; only the targeted monitor is queried, making `toggle`,
+  `get` and `set` faster
+- Removed the 1 second pause after `toggle`
+- Added a unit test project (`DDCSwitch.Tests`, xUnit v3), run on every CI build
+- Built with .NET SDK 10.0.403 (pinned in `global.json`), which patches the NativeAOT compiler for
+  GHSA-p3jp-9v83-76w9. Spectre.Console updated to 0.57.2
+- CI: tests and coverage on every PR, NuGet caching, superseded runs cancelled, least-privilege permissions,
+  and releases are created only when the changelog version is new. Release and Chocolatey packaging
+  now run in one job
+- Removed unused hardware-inspection and DDC/CI "identity" code
+
 ## [1.0.4] - 2026-01-09
 
 ### Added

@@ -59,7 +59,7 @@ internal static class GetCommand
             return HandleInvalidFeature(featureInput, jsonOutput);
         }
 
-        var monitors = MonitorController.EnumerateMonitors();
+        using var monitors = MonitorController.EnumerateMonitors();
 
         if (monitors.Count == 0)
         {
@@ -75,34 +75,12 @@ internal static class GetCommand
 
         int result = ReadFeatureValue(monitor, feature!, jsonOutput);
 
-        // Cleanup
-        foreach (var m in monitors)
-        {
-            m.Dispose();
-        }
-
         return result;
     }
 
     private static int GetAllMonitors(bool jsonOutput)
     {
-        List<Monitor> monitors;
-
-        if (!jsonOutput)
-        {
-            monitors = null!;
-            AnsiConsole.Status()
-                .Start("Enumerating monitors...", ctx =>
-                {
-                    ctx.Spinner(Spinner.Known.Dots);
-                    ctx.SpinnerStyle(Style.Parse("cyan"));
-                    monitors = MonitorController.EnumerateMonitors();
-                });
-        }
-        else
-        {
-            monitors = MonitorController.EnumerateMonitors();
-        }
+        using var monitors = MonitorController.EnumerateMonitors();
 
         if (monitors.Count == 0)
         {
@@ -167,7 +145,7 @@ internal static class GetCommand
         return 1;
     }
 
-    private static int HandleMonitorNotFound(List<Monitor> monitors, string monitorId, bool jsonOutput)
+    private static int HandleMonitorNotFound(IReadOnlyList<Monitor> monitors, string monitorId, bool jsonOutput)
     {
         if (jsonOutput)
         {
@@ -178,12 +156,6 @@ internal static class GetCommand
         {
             ConsoleOutputFormatter.WriteError($"Monitor '{monitorId}' not found.");
             AnsiConsole.MarkupLine("Use [yellow]ddcswitch list[/] to see available monitors.");
-        }
-
-        // Cleanup
-        foreach (var m in monitors)
-        {
-            m.Dispose();
         }
 
         return 1;

@@ -43,7 +43,7 @@ internal static class ConsoleOutputFormatter
     {
         // Header with monitor identification
         var headerPanel = new Panel(
-            $"[bold white]{monitor.ResolvedName}[/]\n" +
+            $"[bold white]{monitor.Name}[/]\n" +
             $"[dim]Device:[/] [cyan]{monitor.DeviceName}[/]  " +
             $"[dim]Primary:[/] {(monitor.IsPrimary ? "[green]Yes[/]" : "[dim]No[/]")}")
         {

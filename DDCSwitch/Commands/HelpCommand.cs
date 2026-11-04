@@ -79,7 +79,9 @@ internal static class HelpCommand
             "[bold yellow]Features:[/] brightness, contrast, input, or VCP codes like [cyan]0x10[/]\n" +
             "[bold yellow]Flags:[/]\n" +
             "  [cyan]--json[/]    Machine-readable JSON output for automation\n" +
-            "  [cyan]--verbose[/] Include detailed information in list command")
+            "  [cyan]--verbose[/] Include detailed information in list command\n" +
+            "  [cyan]--trace[/]   Log every DDC/CI call to stderr (or set DDCSWITCH_TRACE=1)\n" +
+            "[bold yellow]Monitor:[/] index, or part of its name, model, hardware ID or device (e.g. [cyan]VG270U[/], [cyan]DISPLAY2[/])")
         {
             Header = new PanelHeader("[bold green]>> Quick Reference[/]", Justify.Left),
             Border = BoxBorder.Rounded,

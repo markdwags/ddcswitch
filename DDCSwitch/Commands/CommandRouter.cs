@@ -6,69 +6,32 @@ internal static class CommandRouter
 {
     public static int Route(string[] args)
     {
+        bool jsonOutput = HasFlag(ref args, "--json");
+        bool verboseOutput = HasFlag(ref args, "--verbose");
+        if (HasFlag(ref args, "--trace"))
+        {
+            DdcTrace.Enabled = true;
+        }
+
         if (args.Length == 0)
         {
             HelpCommand.ShowUsage();
             return 1;
         }
 
-        // Check for --json flag
-        bool jsonOutput = args.Contains("--json", StringComparer.OrdinalIgnoreCase);
-        var filteredArgs = args.Where(a => !a.Equals("--json", StringComparison.OrdinalIgnoreCase)).ToArray();
-
-        // Check for --verbose flag
-        bool verboseOutput = filteredArgs.Contains("--verbose", StringComparer.OrdinalIgnoreCase);
-        filteredArgs = filteredArgs.Where(a => !a.Equals("--verbose", StringComparison.OrdinalIgnoreCase)).ToArray();
-
-
-
-        if (filteredArgs.Length == 0)
-        {
-            HelpCommand.ShowUsage();
-            return 1;
-        }
-
-        var command = filteredArgs[0].ToLowerInvariant();
-
         try
         {
-            return command switch
+            return args[0].ToLowerInvariant() switch
             {
                 "list" or "ls" => ListCommand.Execute(jsonOutput, verboseOutput),
-                "get" => GetCommand.Execute(filteredArgs, jsonOutput),
-                "set" => SetCommand.Execute(filteredArgs, jsonOutput),
-                "toggle" => ToggleCommand.Execute(filteredArgs, jsonOutput),
-                "info" => InfoCommand.Execute(filteredArgs, jsonOutput),
+                "get" => GetCommand.Execute(args, jsonOutput),
+                "set" => SetCommand.Execute(args, jsonOutput),
+                "toggle" => ToggleCommand.Execute(args, jsonOutput),
+                "info" => InfoCommand.Execute(args, jsonOutput),
                 "version" or "-v" or "--version" => HelpCommand.ShowVersion(jsonOutput),
                 "help" or "-h" or "--help" or "/?" => HelpCommand.ShowUsage(),
-                _ => InvalidCommand(filteredArgs[0], jsonOutput)
+                _ => InvalidCommand(args[0], jsonOutput)
             };
-        }
-        catch (ArgumentException ex)
-        {
-            if (jsonOutput)
-            {
-                var error = new ErrorResponse(false, ex.Message);
-                Console.WriteLine(JsonSerializer.Serialize(error, JsonContext.Default.ErrorResponse));
-            }
-            else
-            {
-                ConsoleOutputFormatter.WriteError(ex.Message);
-            }
-            return 1;
-        }
-        catch (InvalidOperationException ex)
-        {
-            if (jsonOutput)
-            {
-                var error = new ErrorResponse(false, ex.Message);
-                Console.WriteLine(JsonSerializer.Serialize(error, JsonContext.Default.ErrorResponse));
-            }
-            else
-            {
-                ConsoleOutputFormatter.WriteError(ex.Message);
-            }
-            return 1;
         }
         catch (Exception ex)
         {
@@ -81,8 +44,17 @@ internal static class CommandRouter
             {
                 ConsoleOutputFormatter.WriteError(ex.Message);
             }
+
             return 1;
         }
+    }
+
+    /// <summary>Removes every occurrence of a flag from args and reports whether it was present.</summary>
+    private static bool HasFlag(ref string[] args, string flag)
+    {
+        int before = args.Length;
+        args = args.Where(a => !a.Equals(flag, StringComparison.OrdinalIgnoreCase)).ToArray();
+        return args.Length != before;
     }
 
     private static int InvalidCommand(string command, bool jsonOutput)
@@ -101,4 +73,3 @@ internal static class CommandRouter
         return 1;
     }
 }
-
