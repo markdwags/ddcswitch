@@ -34,16 +34,30 @@ public record SupportedFeatures(
     bool DefaultColorSpace,
     bool PreferredTimingMode,
     bool ContinuousFrequency,
-    byte RawValue)
+    byte RawValue,
+    bool HasColorEncodingFormats = false)
 {
-    public string DisplayTypeDescription => DisplayType switch
-    {
-        0 => "Monochrome or Grayscale",
-        1 => "RGB Color",
-        2 => "Non-RGB Color",
-        3 => "Undefined",
-        _ => "Unknown"
-    };
+    /// <summary>
+    /// Bits 4-3 of byte 24. For digital inputs on EDID 1.4+ (<see cref="HasColorEncodingFormats"/>) they list the
+    /// supported color encodings; otherwise (analog, or EDID 1.3 and earlier) they give the display color type.
+    /// </summary>
+    public string DisplayTypeDescription => HasColorEncodingFormats
+        ? DisplayType switch
+        {
+            0 => "RGB 4:4:4",
+            1 => "RGB 4:4:4 + YCrCb 4:4:4",
+            2 => "RGB 4:4:4 + YCrCb 4:2:2",
+            3 => "RGB 4:4:4 + YCrCb 4:4:4 + YCrCb 4:2:2",
+            _ => "Unknown"
+        }
+        : DisplayType switch
+        {
+            0 => "Monochrome or Grayscale",
+            1 => "RGB Color",
+            2 => "Non-RGB Color",
+            3 => "Undefined",
+            _ => "Unknown"
+        };
 }
 
 /// <summary>
@@ -570,6 +584,10 @@ public static class EdidParser
             bool preferredTimingMode = (value & 0x02) != 0; // Bit 1
             bool continuousFrequency = (value & 0x01) != 0; // Bit 0
 
+            // EDID 1.4 redefined bits 4-3 for digital inputs (byte 20 bit 7) as supported color encodings.
+            bool isDigital = (edid[20] & 0x80) != 0;
+            bool isEdid14OrLater = edid[18] > 1 || (edid[18] == 1 && edid[19] >= 4);
+
             return new SupportedFeatures(
                 dpmsStandby,
                 dpmsSuspend,
@@ -578,7 +596,8 @@ public static class EdidParser
                 defaultColorSpace,
                 preferredTimingMode,
                 continuousFrequency,
-                value);
+                value,
+                HasColorEncodingFormats: isDigital && isEdid14OrLater);
         }
         catch
         {

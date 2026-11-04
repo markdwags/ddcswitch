@@ -109,6 +109,56 @@ public class EdidParserTests
     }
 
     [Fact]
+    public void DigitalEdid14_DescribesColorEncodings()
+    {
+        // The Acer is a digital EDID 1.4 panel: bits 4-3 = 0b11 list its color encodings, not a display type.
+        var features = EdidParser.ParseSupportedFeatures(AcerEdid)!;
+        Assert.True(features.HasColorEncodingFormats);
+        Assert.Equal("RGB 4:4:4 + YCrCb 4:4:4 + YCrCb 4:2:2", features.DisplayTypeDescription);
+    }
+
+    [Theory]
+    [InlineData(0b00, "RGB 4:4:4")]
+    [InlineData(0b01, "RGB 4:4:4 + YCrCb 4:4:4")]
+    [InlineData(0b10, "RGB 4:4:4 + YCrCb 4:2:2")]
+    [InlineData(0b11, "RGB 4:4:4 + YCrCb 4:4:4 + YCrCb 4:2:2")]
+    public void DigitalEdid14_MapsEveryColorEncoding(int bits, string expected)
+    {
+        var edid = new EdidBuilder().Build(); // digital input, EDID 1.4
+        edid[24] = (byte)(bits << 3);
+        Assert.Equal(expected, EdidParser.ParseSupportedFeatures(edid)!.DisplayTypeDescription);
+    }
+
+    [Theory]
+    [InlineData(0b00, "Monochrome or Grayscale")]
+    [InlineData(0b01, "RGB Color")]
+    [InlineData(0b10, "Non-RGB Color")]
+    [InlineData(0b11, "Undefined")]
+    public void AnalogInput_UsesDisplayTypeTable(int bits, string expected)
+    {
+        var edid = new EdidBuilder().Build();
+        edid[20] = 0x00; // analog input
+        edid[24] = (byte)(bits << 3);
+
+        var features = EdidParser.ParseSupportedFeatures(edid)!;
+        Assert.False(features.HasColorEncodingFormats);
+        Assert.Equal(expected, features.DisplayTypeDescription);
+    }
+
+    [Fact]
+    public void DigitalEdid13_UsesDisplayTypeTable()
+    {
+        // Before EDID 1.4, bits 4-3 meant display type for digital inputs too.
+        var edid = new EdidBuilder().Build();
+        edid[19] = 3; // EDID 1.3
+        edid[24] = 0b01 << 3;
+
+        var features = EdidParser.ParseSupportedFeatures(edid)!;
+        Assert.False(features.HasColorEncodingFormats);
+        Assert.Equal("RGB Color", features.DisplayTypeDescription);
+    }
+
+    [Fact]
     public void ParsesChromaticity_PerEdidSpec()
     {
         // Bytes 25-34 of the Acer EDID: 93 25 AD 4F 44 A9 26 0D 50 54.

@@ -21,6 +21,9 @@ All notable changes to ddcswitch will be documented in this file.
 - Physical monitor handles are no longer leaked during enumeration
 - `info` reported wrong EDID chromaticity: each color's y coordinate repeated its x coordinate (bytes 31-34
   were never read). Coordinates are now decoded per the EDID 1.4 layout
+- `info` showed display type "Undefined" for most digital monitors. For digital EDID 1.4 monitors those
+  bits list the supported color encodings, which are now shown instead (e.g. `RGB 4:4:4 + YCrCb 4:4:4 +
+  YCrCb 4:2:2`); the `displayType` value in `info --json` changes accordingly
 - GitHub release notes were truncated at the first `###` subsection of the changelog
 
 ### Added
