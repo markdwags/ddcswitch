@@ -1,220 +1,116 @@
 ﻿#!/usr/bin/env pwsh
 <#
 .SYNOPSIS
-    Builds the Chocolatey package for ddcswitch with proper checksum embedding.
+    Builds the ddcswitch Chocolatey package (.nupkg).
 
 .DESCRIPTION
-    This script:
-    1. Extracts the version from CHANGELOG.md
-    2. Downloads the release ZIP from GitHub (or uses a local file)
-    3. Calculates the SHA256 checksum
-    4. Replaces placeholders in nuspec and install script
-    5. Builds the .nupkg package
+    The package does not embed the exe: its install script downloads the GitHub release ZIP and
+    checks it against a SHA256 checksum that this script embeds. So the checksum must be the
+    checksum of the ZIP that is (or will be) attached to the GitHub release.
+
+    1. Gets the version from CHANGELOG.md (or -Version).
+    2. Downloads the release ZIP from GitHub (or uses -LocalZip) and computes its SHA256.
+    3. Copies chocolatey/ to a work directory and fills in __VERSION__ / __CHECKSUM__.
+    4. Runs choco pack, writing ddcswitch.<PackageVersion>.nupkg to -OutputDir.
+
+    CI uses this same script with -LocalZip pointing at the ZIP it is about to release.
 
 .PARAMETER Version
-    The version to build. If not specified, extracts from CHANGELOG.md
+    Release version (X.Y.Z) the package installs. Defaults to the first version in CHANGELOG.md.
+
+.PARAMETER PackageVersion
+    Chocolatey package version. Defaults to -Version. Use a package-fix version such as
+    1.0.5.20261118 to republish a fixed package for the same release.
 
 .PARAMETER LocalZip
-    Path to a local ZIP file to use instead of downloading from GitHub
+    Use this ZIP instead of downloading the release. Only meaningful if it is byte-for-byte the
+    release ZIP (as in CI), otherwise the install-time checksum check will fail.
+
+.PARAMETER OutputDir
+    Where the .nupkg goes. Defaults to dist\ (the work directory is dist\chocolatey-build).
 
 .EXAMPLE
     .\build-chocolatey.ps1
-    
+
 .EXAMPLE
-    .\build-chocolatey.ps1 -Version 1.0.2
-    
-.EXAMPLE
-    .\build-chocolatey.ps1 -LocalZip "D:\Programming\DDCSwitch\dist\ddcswitch-1.0.2-win-x64.zip"
+    .\build-chocolatey.ps1 -Version 1.0.5 -PackageVersion 1.0.5.20261118
 #>
 
 [CmdletBinding()]
 param(
     [string]$Version,
-    [string]$LocalZip
+    [string]$PackageVersion,
+    [string]$LocalZip,
+    [string]$OutputDir = (Join-Path $PSScriptRoot 'dist')
 )
 
 $ErrorActionPreference = 'Stop'
 
-Write-Host "========================================" -ForegroundColor Cyan
-Write-Host "Building Chocolatey Package for ddcswitch" -ForegroundColor Cyan
-Write-Host "========================================" -ForegroundColor Cyan
-Write-Host
+# Explicit UTF-8 (no BOM) so the emoji in the nuspec survive Windows PowerShell 5.1 too.
+$utf8 = New-Object System.Text.UTF8Encoding($false)
+function Update-Placeholders([string]$Path, [hashtable]$Values) {
+    $text = [System.IO.File]::ReadAllText($Path)
+    foreach ($key in $Values.Keys) { $text = $text.Replace($key, $Values[$key]) }
+    if ($text -match '__[A-Z]+__') { throw "Unreplaced placeholder $($matches[0]) in $Path" }
+    [System.IO.File]::WriteAllText($Path, $text, $utf8)
+}
 
-# Get version from CHANGELOG.md if not specified
 if (-not $Version) {
-    Write-Host "Extracting version from CHANGELOG.md..." -ForegroundColor Yellow
-    $changelogPath = Join-Path $PSScriptRoot "CHANGELOG.md"
-    
-    if (-not (Test-Path $changelogPath)) {
-        Write-Error "CHANGELOG.md not found at: $changelogPath"
-        exit 1
-    }
-    
-    $changelogContent = Get-Content $changelogPath -Raw
-    if ($changelogContent -match '##\s+\[(\d+\.\d+\.\d+)\]') {
-        $Version = $matches[1]
-        Write-Host "Found version: $Version" -ForegroundColor Green
-    } else {
-        Write-Error "Could not extract version from CHANGELOG.md. Expected format: ## [X.Y.Z]"
-        exit 1
-    }
+    $changelog = [System.IO.File]::ReadAllText((Join-Path $PSScriptRoot 'CHANGELOG.md'))
+    if ($changelog -notmatch '##\s+\[(\d+\.\d+\.\d+)\]') { throw 'Could not find a "## [X.Y.Z]" version in CHANGELOG.md' }
+    $Version = $matches[1]
 }
+if (-not $PackageVersion) { $PackageVersion = $Version }
+Write-Host "Release version: $Version  Package version: $PackageVersion" -ForegroundColor Cyan
 
-Write-Host "Building package for version: $Version" -ForegroundColor Green
-Write-Host
-
-# Get or download the ZIP file and calculate checksum
+$zipUrl = "https://github.com/markdwags/ddcswitch/releases/download/v$Version/ddcswitch-$Version-win-x64.zip"
+$downloaded = $false
 if ($LocalZip) {
-    Write-Host "Using local ZIP file: $LocalZip" -ForegroundColor Yellow
-    
-    if (-not (Test-Path $LocalZip)) {
-        Write-Error "Local ZIP file not found: $LocalZip"
-        exit 1
-    }
-    
-    $zipPath = $LocalZip
+    if (-not (Test-Path $LocalZip)) { throw "Local ZIP not found: $LocalZip" }
+    $zipPath = (Resolve-Path $LocalZip).Path
 } else {
-    Write-Host "Downloading release ZIP from GitHub..." -ForegroundColor Yellow
-    $url = "https://github.com/markdwags/ddcswitch/releases/download/v$Version/ddcswitch-$Version-win-x64.zip"
-    $zipPath = Join-Path $env:TEMP "ddcswitch-$Version.zip"
-    
+    $zipPath = Join-Path ([System.IO.Path]::GetTempPath()) "ddcswitch-$Version-win-x64.zip"
+    Write-Host "Downloading $zipUrl"
     try {
-        Invoke-WebRequest -Uri $url -OutFile $zipPath -UseBasicParsing
-        Write-Host "Downloaded: $url" -ForegroundColor Green
+        Invoke-WebRequest -Uri $zipUrl -OutFile $zipPath -UseBasicParsing
     } catch {
-        Write-Error "Failed to download release ZIP. Make sure the release exists: $url"
-        exit 1
+        throw "Could not download the release ZIP (does release v$Version exist?): $zipUrl"
     }
+    $downloaded = $true
 }
 
-# Calculate checksum
-Write-Host "Calculating SHA256 checksum..." -ForegroundColor Yellow
-$checksumObj = Get-FileHash -Path $zipPath -Algorithm SHA256
-$checksum = $checksumObj.Hash
-Write-Host "Checksum: $checksum" -ForegroundColor Green
-Write-Host
-
-# Prepare chocolatey directory
-$chocoDir = Join-Path $PSScriptRoot "chocolatey"
-$workDir = Join-Path $PSScriptRoot "chocolatey-build"
-
-if (Test-Path $workDir) {
-    Remove-Item $workDir -Recurse -Force
-}
-
-Write-Host "Copying chocolatey files to working directory..." -ForegroundColor Yellow
-Copy-Item $chocoDir -Destination $workDir -Recurse
-
-# Replace placeholders in nuspec
-Write-Host "Updating nuspec with version $Version..." -ForegroundColor Yellow
-$nuspecPath = Join-Path $workDir "ddcswitch.nuspec"
-$nuspecContent = Get-Content $nuspecPath -Raw
-$nuspecContent = $nuspecContent -replace '__VERSION__', $Version
-Set-Content $nuspecPath -Value $nuspecContent -NoNewline
-
-# Replace placeholders in install script
-Write-Host "Updating install script with checksum..." -ForegroundColor Yellow
-$installScriptPath = Join-Path $workDir "tools\chocolateyinstall.ps1"
-$installContent = Get-Content $installScriptPath -Raw
-$installContent = $installContent -replace '__CHECKSUM__', $checksum
-Set-Content $installScriptPath -Value $installContent -NoNewline
-
-# Update VERIFICATION.txt
-Write-Host "Updating VERIFICATION.txt..." -ForegroundColor Yellow
-$verificationPath = Join-Path $workDir "tools\VERIFICATION.txt"
-$verificationContent = @"
-VERIFICATION
-============
-
-Verification is intended to assist moderators and community in verifying that the
-package is published by the software author.
-
-## Source Code
-
-The source code for ddcswitch is available on GitHub:
-https://github.com/markdwags/ddcswitch
-
-## Binary Release
-
-The binary included in this package was downloaded from the official GitHub releases:
-https://github.com/markdwags/ddcswitch/releases/tag/v$Version
-
-Direct download link:
-https://github.com/markdwags/ddcswitch/releases/download/v$Version/ddcswitch-$Version-win-x64.zip
-
-## Checksum Verification
-
-You can verify the integrity of the downloaded file using PowerShell:
-
-```powershell
-`$url = "https://github.com/markdwags/ddcswitch/releases/download/v$Version/ddcswitch-$Version-win-x64.zip"
-`$file = "`$env:TEMP\ddcswitch-verify.zip"
-Invoke-WebRequest -Uri `$url -OutFile `$file
-Get-FileHash `$file -Algorithm SHA256
-Remove-Item `$file
-```
-
-Expected checksum (SHA256):
-$checksum
-
-This checksum is embedded in the chocolateyinstall.ps1 script and verified during installation.
-
-## License
-
-ddcswitch is licensed under the MIT License.
-See: https://github.com/markdwags/ddcswitch/blob/main/LICENSE
-"@
-
-Set-Content $verificationPath -Value $verificationContent
-
-# Remove CHECKSUM file as it's no longer needed (checksum is now embedded in script)
-$checksumFilePath = Join-Path $workDir "tools\CHECKSUM"
-if (Test-Path $checksumFilePath) {
-    Remove-Item $checksumFilePath
-    Write-Host "Removed obsolete CHECKSUM file (checksum is now embedded in install script)" -ForegroundColor Yellow
-}
-
-# Build the package
-Write-Host "Building Chocolatey package..." -ForegroundColor Yellow
-Push-Location $workDir
 try {
-    choco pack
-    
-    if ($LASTEXITCODE -ne 0) {
-        Write-Error "choco pack failed with exit code $LASTEXITCODE"
-        exit 1
-    }
-    
-    # Move the package to the root directory
-    $nupkg = Get-ChildItem -Filter "ddcswitch.$Version.nupkg" | Select-Object -First 1
-    if ($nupkg) {
-        $destPath = Join-Path $PSScriptRoot $nupkg.Name
-        Move-Item $nupkg.FullName $destPath -Force
-        Write-Host
-        Write-Host "========================================" -ForegroundColor Green
-        Write-Host "Package built successfully!" -ForegroundColor Green
-        Write-Host "========================================" -ForegroundColor Green
-        Write-Host "Output: $destPath" -ForegroundColor Green
-        Write-Host
-        Write-Host "To test locally:" -ForegroundColor Cyan
-        Write-Host "  choco install ddcswitch -s . --force" -ForegroundColor White
-        Write-Host
-        Write-Host "To submit to Chocolatey:" -ForegroundColor Cyan
-        Write-Host "  https://community.chocolatey.org/packages/submit" -ForegroundColor White
-    } else {
-        Write-Error "Package file not found after build"
-        exit 1
-    }
-} finally {
-    Pop-Location
-}
+    $checksum = (Get-FileHash -Path $zipPath -Algorithm SHA256).Hash
+    Write-Host "SHA256: $checksum" -ForegroundColor Green
 
-# Cleanup temp file if we downloaded it
-if (-not $LocalZip -and (Test-Path $zipPath)) {
-    Remove-Item $zipPath
+    New-Item -ItemType Directory -Force -Path $OutputDir | Out-Null
+    $OutputDir = (Resolve-Path $OutputDir).Path
+    $workDir = Join-Path $OutputDir 'chocolatey-build'
+    if (Test-Path $workDir) { Remove-Item $workDir -Recurse -Force }
+    Copy-Item (Join-Path $PSScriptRoot 'chocolatey') -Destination $workDir -Recurse
+    Remove-Item (Join-Path $workDir 'README.md') -ErrorAction SilentlyContinue  # maintainer docs, not package content
+
+    $values = @{ '__VERSION__' = $Version; '__CHECKSUM__' = $checksum }
+    Update-Placeholders (Join-Path $workDir 'ddcswitch.nuspec') @{ '__VERSION__' = $PackageVersion }
+    Update-Placeholders (Join-Path $workDir 'tools\chocolateyinstall.ps1') $values
+    Update-Placeholders (Join-Path $workDir 'tools\VERIFICATION.txt') $values
+
+    if (-not (Get-Command choco -ErrorAction SilentlyContinue)) { throw 'choco is not installed (https://chocolatey.org/install)' }
+    $nupkg = Join-Path $OutputDir "ddcswitch.$PackageVersion.nupkg"
+    if (Test-Path $nupkg) { Remove-Item $nupkg -Force }
+
+    choco pack (Join-Path $workDir 'ddcswitch.nuspec') --outputdirectory $OutputDir --limit-output
+    if ($LASTEXITCODE -ne 0) { throw "choco pack failed with exit code $LASTEXITCODE" }
+    if (-not (Test-Path $nupkg)) { throw "choco pack did not produce $nupkg" }
+} finally {
+    if ($downloaded -and (Test-Path $zipPath)) { Remove-Item $zipPath -Force }
 }
 
 Write-Host
-Write-Host "Build directory preserved at: $workDir" -ForegroundColor Yellow
-Write-Host "You can inspect the files before submission." -ForegroundColor Yellow
-
+Write-Host "Package: $nupkg" -ForegroundColor Green
+Write-Host "Filled-in sources: $workDir"
+Write-Host
+Write-Host 'Test install (elevated shell):' -ForegroundColor Cyan
+Write-Host "  choco install ddcswitch -s `"$OutputDir`" -y --force"
+Write-Host 'Submit:' -ForegroundColor Cyan
+Write-Host "  choco push `"$nupkg`" --source https://push.chocolatey.org/"

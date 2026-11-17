@@ -22,8 +22,8 @@ Or download `ddcswitch.exe` from [Releases](../../releases) and put it on your `
 ```powershell
 git clone https://github.com/markdwags/ddcswitch.git
 cd ddcswitch
-.\build.ps1                            # produces dist\ddcswitch.exe
-dotnet test --project DDCSwitch.Tests  # run the unit tests (no monitor needed)
+.\build.ps1                                  # produces dist\ddcswitch.exe
+dotnet test --project tests/ddcswitch.Tests  # run the unit tests (no monitor needed)
 ```
 
 ## Usage

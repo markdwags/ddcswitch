@@ -68,7 +68,7 @@ ddcswitch get 0 brightness         # shows percentage and raw value/max
 
 A value with `%` is scaled to the monitor's maximum. A bare number is sent as-is. Most monitors use a 0–100 range, but not all, so `get` shows the real maximum (`Raw value: 60/100`). Raw values above that maximum are rejected.
 
-Common features (the full list of names and aliases is in [`VcpFeatureData.json`](DDCSwitch/VcpFeatureData.json); any VCP code `0x00`–`0xFF` also works):
+Common features (the full list of names and aliases is in [`VcpFeatureData.json`](src/ddcswitch/VcpFeatureData.json); any VCP code `0x00`–`0xFF` also works):
 
 | Feature | Code | Aliases | `%` |
 |---------|------|---------|-----|

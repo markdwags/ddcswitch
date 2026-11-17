@@ -1,26 +1,19 @@
 ﻿$ErrorActionPreference = 'Stop'
 
-$packageName = 'ddcswitch'
 $toolsDir = "$(Split-Path -parent $MyInvocation.MyCommand.Definition)"
 
-# Version is automatically provided by Chocolatey from the nuspec
-$version = $env:chocolateyPackageVersion
-$url64 = "https://github.com/markdwags/ddcswitch/releases/download/v$version/ddcswitch-$version-win-x64.zip"
-
-# Checksum must be embedded in the script for Chocolatey validation
-$checksum64 = '__CHECKSUM__'
-$checksumType64 = 'sha256'
-
+# The release version and ZIP checksum below are filled in by build-chocolatey.ps1 when packing.
+# The URL uses the release version, not $env:ChocolateyPackageVersion, so a package-fix version
+# (e.g. 1.0.5.20261118) still downloads the right release.
 $packageArgs = @{
-  packageName    = $packageName
+  packageName    = $env:ChocolateyPackageName
   unzipLocation  = $toolsDir
-  url64bit       = $url64
-  checksum64     = $checksum64
-  checksumType64 = $checksumType64
+  url64bit       = 'https://github.com/markdwags/ddcswitch/releases/download/v__VERSION__/ddcswitch-__VERSION__-win-x64.zip'
+  checksum64     = '__CHECKSUM__'
+  checksumType64 = 'sha256'
 }
 
 Install-ChocolateyZipPackage @packageArgs
 
-# The ZIP contains the executable at the root
-# Chocolatey will automatically create a shim for ddcswitch.exe
-
+# The ZIP has ddcswitch.exe at its root; Chocolatey creates the `ddcswitch` shim for it automatically
+# and removes the shim and this folder on uninstall.

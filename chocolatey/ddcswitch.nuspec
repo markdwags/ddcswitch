@@ -3,12 +3,13 @@
   <metadata>
     <id>ddcswitch</id>
     <version>__VERSION__</version>
-    <packageSourceUrl>https://github.com/markdwags/ddcswitch</packageSourceUrl>
+    <packageSourceUrl>https://github.com/markdwags/ddcswitch/tree/main/chocolatey</packageSourceUrl>
     <owners>markdwags</owners>
     <title>ddcswitch - Monitor Control via DDC/CI</title>
     <authors>markdwags</authors>
     <projectUrl>https://github.com/markdwags/ddcswitch</projectUrl>
-    <iconUrl>https://cdn.jsdelivr.net/gh/markdwags/ddcswitch@main/icon.png</iconUrl>
+    <projectSourceUrl>https://github.com/markdwags/ddcswitch</projectSourceUrl>
+    <copyright>Copyright (c) 2026 ddcswitch Contributors</copyright>
     <licenseUrl>https://github.com/markdwags/ddcswitch/blob/main/LICENSE</licenseUrl>
     <requireLicenseAcceptance>false</requireLicenseAcceptance>
     <docsUrl>https://github.com/markdwags/ddcswitch#readme</docsUrl>

@@ -1,0 +1,647 @@
+using System.Text;
+
+
+namespace DdcSwitch;
+
+/// <summary>
+/// Represents EDID version information.
+/// </summary>
+/// <param name="Major">Major version number</param>
+/// <param name="Minor">Minor version number</param>
+public record EdidVersion(byte Major, byte Minor)
+{
+    public override string ToString() => $"{Major}.{Minor}";
+}
+
+/// <summary>
+/// Represents video input definition from EDID.
+/// </summary>
+/// <param name="IsDigital">True if digital input, false if analog</param>
+/// <param name="RawValue">Raw byte value from EDID</param>
+public record VideoInputDefinition(bool IsDigital, byte RawValue)
+{
+    public override string ToString() => IsDigital ? "Digital" : "Analog";
+}
+
+/// <summary>
+/// Represents supported display features from EDID.
+/// </summary>
+public record SupportedFeatures(
+    bool DpmsStandby,
+    bool DpmsSuspend,
+    bool DpmsActiveOff,
+    byte DisplayType,
+    bool DefaultColorSpace,
+    bool PreferredTimingMode,
+    bool ContinuousFrequency,
+    byte RawValue,
+    bool HasColorEncodingFormats = false)
+{
+    /// <summary>
+    /// Bits 4-3 of byte 24. For digital inputs on EDID 1.4+ (<see cref="HasColorEncodingFormats"/>) they list the
+    /// supported color encodings; otherwise (analog, or EDID 1.3 and earlier) they give the display color type.
+    /// </summary>
+    public string DisplayTypeDescription => HasColorEncodingFormats
+        ? DisplayType switch
+        {
+            0 => "RGB 4:4:4",
+            1 => "RGB 4:4:4 + YCrCb 4:4:4",
+            2 => "RGB 4:4:4 + YCrCb 4:2:2",
+            3 => "RGB 4:4:4 + YCrCb 4:4:4 + YCrCb 4:2:2",
+            _ => "Unknown"
+        }
+        : DisplayType switch
+        {
+            0 => "Monochrome or Grayscale",
+            1 => "RGB Color",
+            2 => "Non-RGB Color",
+            3 => "Undefined",
+            _ => "Unknown"
+        };
+}
+
+/// <summary>
+/// Represents chromaticity coordinates for a color point.
+/// </summary>
+/// <param name="X">X coordinate (0.0 to 1.0)</param>
+/// <param name="Y">Y coordinate (0.0 to 1.0)</param>
+public record ColorPoint(double X, double Y)
+{
+    public override string ToString() => $"x={X:F4}, y={Y:F4}";
+}
+
+/// <summary>
+/// Represents complete chromaticity information from EDID.
+/// </summary>
+public record ChromaticityCoordinates(
+    ColorPoint Red,
+    ColorPoint Green,
+    ColorPoint Blue,
+    ColorPoint White);
+
+/// <summary>
+/// Represents complete EDID information with metadata from enhanced parsing.
+/// </summary>
+/// <param name="ManufacturerName">Full manufacturer name</param>
+/// <param name="ManufacturerCode">3-letter manufacturer code</param>
+/// <param name="ProductCode">Product code from EDID</param>
+/// <param name="SerialNumber">Serial number from EDID</param>
+/// <param name="ManufactureWeek">Week of manufacture (1-53)</param>
+/// <param name="ManufactureYear">Year of manufacture</param>
+/// <param name="EdidVersion">EDID version number</param>
+/// <param name="EdidRevision">EDID revision number</param>
+/// <param name="VideoInputDefinition">Video input definition string</param>
+/// <param name="ColorInfo">Color space information</param>
+/// <param name="RawData">Raw EDID byte data</param>
+/// <param name="IsFromActiveEntry">Whether this EDID came from an active registry entry</param>
+public record ParsedEdidInfo(
+    string ManufacturerName,
+    string ManufacturerCode,
+    ushort ProductCode,
+    uint SerialNumber,
+    int ManufactureWeek,
+    int ManufactureYear,
+    byte EdidVersion,
+    byte EdidRevision,
+    string VideoInputDefinition,
+    EdidColorInfo ColorInfo,
+    byte[] RawData,
+    bool IsFromActiveEntry
+);
+
+/// <summary>
+/// Represents color space information from EDID.
+/// </summary>
+/// <param name="WhitePointX">White point X coordinate</param>
+/// <param name="WhitePointY">White point Y coordinate</param>
+/// <param name="RedX">Red X coordinate</param>
+/// <param name="RedY">Red Y coordinate</param>
+/// <param name="GreenX">Green X coordinate</param>
+/// <param name="GreenY">Green Y coordinate</param>
+/// <param name="BlueX">Blue X coordinate</param>
+/// <param name="BlueY">Blue Y coordinate</param>
+public record EdidColorInfo(
+    float WhitePointX,
+    float WhitePointY,
+    float RedX,
+    float RedY,
+    float GreenX,
+    float GreenY,
+    float BlueX,
+    float BlueY
+);
+
+/// <summary>
+/// Parses EDID (Extended Display Identification Data) blocks to extract monitor information.
+/// EDID bytes are read by DisplayDeviceResolver from the monitor's own registry key.
+/// </summary>
+public static class EdidParser
+{
+    /// <summary>
+    /// Parses EDID information from raw byte data.
+    /// </summary>
+    /// <param name="edidData">Raw EDID byte array</param>
+    /// <param name="isFromActiveEntry">Whether this data came from an active registry entry</param>
+    /// <returns>Complete EDID information or null if invalid</returns>
+    public static ParsedEdidInfo? ParseFromBytes(byte[] edidData, bool isFromActiveEntry = false)
+    {
+        if (edidData == null || edidData.Length < 128 || !ValidateHeader(edidData))
+            return null;
+
+        try
+        {
+            var manufacturerCode = ParseManufacturerId(edidData) ?? "UNK";
+            var manufacturerName = GetManufacturerName(manufacturerCode);
+            var productCode = ParseProductCode(edidData) ?? 0;
+            var serialNumber = ParseNumericSerialNumber(edidData) ?? 0;
+            var manufactureWeek = ParseManufactureWeek(edidData) ?? 0;
+            var manufactureYear = ParseManufactureYear(edidData) ?? 0;
+            var edidVersion = ParseEdidVersion(edidData);
+            var videoInput = ParseVideoInputDefinition(edidData);
+            var chromaticity = ParseChromaticity(edidData);
+
+            var colorInfo = new EdidColorInfo(
+                (float)(chromaticity?.White.X ?? 0.0),
+                (float)(chromaticity?.White.Y ?? 0.0),
+                (float)(chromaticity?.Red.X ?? 0.0),
+                (float)(chromaticity?.Red.Y ?? 0.0),
+                (float)(chromaticity?.Green.X ?? 0.0),
+                (float)(chromaticity?.Green.Y ?? 0.0),
+                (float)(chromaticity?.Blue.X ?? 0.0),
+                (float)(chromaticity?.Blue.Y ?? 0.0)
+            );
+
+            return new ParsedEdidInfo(
+                manufacturerName,
+                manufacturerCode,
+                productCode,
+                serialNumber,
+                manufactureWeek,
+                manufactureYear,
+                edidVersion?.Major ?? 0,
+                edidVersion?.Minor ?? 0,
+                videoInput?.ToString() ?? "Unknown",
+                colorInfo,
+                edidData,
+                isFromActiveEntry
+            );
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Parses manufacturer ID from EDID bytes.
+    /// </summary>
+    /// <param name="edid">EDID data (at least 2 bytes from offset 8)</param>
+    /// <returns>3-letter manufacturer ID (e.g., "SAM", "DEL") or null if invalid</returns>
+    public static string? ParseManufacturerId(byte[] edid)
+    {
+        if (edid.Length < 10) return null;
+        
+        try
+        {
+            // Manufacturer ID is stored in bytes 8-9 as 3 5-bit characters
+            // Bit layout: |0|CHAR1|CHAR2|CHAR3| across 2 bytes
+            ushort id = (ushort)((edid[8] << 8) | edid[9]);
+            
+            char char1 = (char)(((id >> 10) & 0x1F) + 'A' - 1);
+            char char2 = (char)(((id >> 5) & 0x1F) + 'A' - 1);
+            char char3 = (char)((id & 0x1F) + 'A' - 1);
+            
+            return $"{char1}{char2}{char3}";
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Gets the full manufacturer name from 3-letter PNP ID.
+    /// </summary>
+    /// <param name="manufacturerId">3-letter manufacturer ID</param>
+    /// <returns>Full company name or the ID itself if not found</returns>
+    public static string GetManufacturerName(string? manufacturerId)
+    {
+        if (string.IsNullOrEmpty(manufacturerId)) return "Unknown";
+        
+        return manufacturerId switch
+        {
+            "AAC" => "AcerView",
+            "ACI" => "Asus Computer Inc",
+            "ACR" => "Acer Technologies",
+            "ACT" => "Targa",
+            "ADI" => "ADI Corporation",
+            "AIC" => "AG Neovo",
+            "AMW" => "AMW",
+            "AOC" => "AOC International",
+            "API" => "A Plus Info Corporation",
+            "APP" => "Apple Computer",
+            "ART" => "ArtMedia",
+            "AST" => "AST Research",
+            "AUO" => "AU Optronics",
+            "BEL" => "Belkin",
+            "BEN" => "BenQ Corporation",
+            "BMM" => "BMM",
+            "BNQ" => "BenQ Corporation",
+            "BOE" => "BOE Technology",
+            "CMO" => "Chi Mei Optoelectronics",
+            "CPL" => "Compal Electronics",
+            "CPQ" => "Compaq Computer Corporation",
+            "CTX" => "CTX International",
+            "DEC" => "Digital Equipment Corporation",
+            "DEL" => "Dell Inc.",
+            "DPC" => "Delta Electronics",
+            "DWE" => "Daewoo Electronics",
+            "ECS" => "ELITEGROUP Computer Systems",
+            "EIZ" => "EIZO Corporation",
+            "ELS" => "ELSA GmbH",
+            "ENC" => "Eizo Nanao Corporation",
+            "EPI" => "Envision Peripherals",
+            "EPH" => "Epiphan Systems Inc.",
+            "FUJ" => "Fujitsu Siemens Computers",
+            "FUS" => "Fujitsu Siemens Computers",
+            "GSM" => "LG Electronics",
+            "GWY" => "Gateway 2000",
+            "HEI" => "Hyundai Electronics Industries",
+            "HIQ" => "Hyundai ImageQuest",
+            "HIT" => "Hitachi",
+            "HPN" => "HP Inc.",
+            "HSD" => "Hannstar Display Corporation",
+            "HSL" => "Hansol Electronics",
+            "HTC" => "Hitachi",
+            "HWP" => "HP Inc.",
+            "IBM" => "IBM Corporation",
+            "ICL" => "Fujitsu ICL",
+            "IFS" => "InFocus Corporation",
+            "IQT" => "Hyundai ImageQuest",
+            "IVM" => "Iiyama North America",
+            "KDS" => "KDS USA",
+            "KFC" => "KFC Computek",
+            "LEN" => "Lenovo",
+            "LGD" => "LG Display",
+            "LKM" => "ADLAS",
+            "LNK" => "LINK Technologies",
+            "LPL" => "LG Philips",
+            "LTN" => "Lite-On Technology",
+            "MAG" => "MAG InnoVision",
+            "MAX" => "Maxdata Computer",
+            "MEI" => "Panasonic Industry Company",
+            "MEL" => "Mitsubishi Electronics",
+            "MED" => "Matsushita Electric Industrial",
+            "MS_" => "Panasonic Industry Company",
+            "MSI" => "Micro-Star International",
+            "MSH" => "Microsoft Corporation",
+            "NAN" => "NANAO Corporation",
+            "NEC" => "NEC Corporation",
+            "NOK" => "Nokia",
+            "NVD" => "Nvidia",
+            "OPT" => "Optoma Corporation",
+            "OQI" => "OPTIQUEST",
+            "PBN" => "Packard Bell",
+            "PCK" => "Daewoo Electronics",
+            "PDC" => "Polaroid",
+            "PGS" => "Princeton Graphic Systems",
+            "PHL" => "Philips Consumer Electronics",
+            "PIX" => "Pixelink",
+            "PNR" => "Planar Systems",
+            "PRT" => "Princeton Graphic Systems",
+            "REL" => "Relisys",
+            "SAM" => "Samsung Electric Company",
+            "SAN" => "Sanyo Electric Co.",
+            "SBI" => "Smarttech",
+            "SEC" => "Seiko Epson Corporation",
+            "SGI" => "Silicon Graphics",
+            "SMC" => "Samtron",
+            "SMI" => "Smile",
+            "SNI" => "Siemens Nixdorf",
+            "SNY" => "Sony Corporation",
+            "SPT" => "Sceptre Tech Inc.",
+            "SRC" => "Shamrock Technology",
+            "STN" => "Samtron",
+            "STP" => "Sceptre Tech Inc.",
+            "TAT" => "Tatung Company of America",
+            "TOS" => "Toshiba Corporation",
+            "TRL" => "Royal Information Company",
+            "TSB" => "Toshiba America Info Systems",
+            "UNK" => "Unknown",
+            "UNM" => "Unisys Corporation",
+            "VSC" => "ViewSonic Corporation",
+            "WTC" => "Wen Technology",
+            "ZCM" => "Zenith Data Systems",
+            _ => manufacturerId,
+        };
+    }
+
+    /// <summary>
+    /// Parses the model name from EDID descriptor blocks.
+    /// </summary>
+    /// <param name="edid">EDID data (at least 128 bytes)</param>
+    /// <returns>Model name string or null if not found</returns>
+    public static string? ParseModelName(byte[] edid)
+    {
+        if (edid.Length < 128) return null;
+        
+        // Check descriptor blocks at offsets 54, 72, 90, 108 (18 bytes each)
+        for (int offset = 54; offset <= 108; offset += 18)
+        {
+            // Descriptor type 0xFC indicates monitor name
+            if (edid[offset] == 0x00 && edid[offset + 1] == 0x00 && 
+                edid[offset + 2] == 0x00 && edid[offset + 3] == 0xFC)
+            {
+                return ParseDescriptorString(edid, offset + 5);
+            }
+        }
+        
+        return null;
+    }
+
+    /// <summary>
+    /// Parses the serial number from EDID descriptor blocks.
+    /// </summary>
+    /// <param name="edid">EDID data (at least 128 bytes)</param>
+    /// <returns>Serial number string or null if not found</returns>
+    public static string? ParseSerialNumber(byte[] edid)
+    {
+        if (edid.Length < 128) return null;
+        
+        // Check descriptor blocks at offsets 54, 72, 90, 108 (18 bytes each)
+        for (int offset = 54; offset <= 108; offset += 18)
+        {
+            // Descriptor type 0xFF indicates serial number
+            if (edid[offset] == 0x00 && edid[offset + 1] == 0x00 && 
+                edid[offset + 2] == 0x00 && edid[offset + 3] == 0xFF)
+            {
+                return ParseDescriptorString(edid, offset + 5);
+            }
+        }
+        
+        // If no descriptor serial found, try numeric serial at bytes 12-15
+        var numericSerial = ParseNumericSerialNumber(edid);
+        if (numericSerial.HasValue && numericSerial.Value != 0)
+        {
+            return numericSerial.Value.ToString();
+        }
+        
+        return null;
+    }
+
+    /// <summary>
+    /// Parses the numeric serial number from EDID.
+    /// </summary>
+    /// <param name="edid">EDID data (at least 16 bytes)</param>
+    /// <returns>Numeric serial number or null if invalid</returns>
+    public static uint? ParseNumericSerialNumber(byte[] edid)
+    {
+        if (edid.Length < 16) return null;
+        
+        try
+        {
+            // Serial number is at bytes 12-15 (little-endian, 32-bit)
+            uint serial = (uint)(edid[12] | (edid[13] << 8) | (edid[14] << 16) | (edid[15] << 24));
+            return serial;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Parses the product code from EDID.
+    /// </summary>
+    /// <param name="edid">EDID data (at least 12 bytes)</param>
+    /// <returns>Product code as ushort or null if invalid</returns>
+    public static ushort? ParseProductCode(byte[] edid)
+    {
+        if (edid.Length < 12) return null;
+        
+        try
+        {
+            // Product code is at bytes 10-11 (little-endian)
+            return (ushort)(edid[10] | (edid[11] << 8));
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Parses the manufacture year from EDID.
+    /// </summary>
+    /// <param name="edid">EDID data (at least 18 bytes)</param>
+    /// <returns>Manufacture year (e.g., 2023) or null if invalid</returns>
+    public static int? ParseManufactureYear(byte[] edid)
+    {
+        if (edid.Length < 18) return null;
+        
+        try
+        {
+            // Manufacture year is at byte 17, stored as offset from 1990
+            int year = edid[17] + 1990;
+            return year >= 1990 && year <= 2100 ? year : null;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Parses the manufacture week from EDID.
+    /// </summary>
+    /// <param name="edid">EDID data (at least 17 bytes)</param>
+    /// <returns>Manufacture week (1-53) or null if invalid</returns>
+    public static int? ParseManufactureWeek(byte[] edid)
+    {
+        if (edid.Length < 17) return null;
+        
+        try
+        {
+            // Manufacture week is at byte 16 (1-53, or 0xFF for unknown)
+            int week = edid[16];
+            return week >= 1 && week <= 53 ? week : null;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Helper to parse ASCII string from EDID descriptor block.
+    /// </summary>
+    private static string? ParseDescriptorString(byte[] edid, int offset)
+    {
+        try
+        {
+            var sb = new StringBuilder();
+            for (int i = 0; i < 13; i++)
+            {
+                byte b = edid[offset + i];
+                if (b == 0x0A || b == 0x00) break; // Newline or null terminator
+                if (b >= 0x20 && b <= 0x7E) // Printable ASCII
+                {
+                    sb.Append((char)b);
+                }
+            }
+            
+            string result = sb.ToString().Trim();
+            return string.IsNullOrWhiteSpace(result) ? null : result;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Validates EDID header (first 8 bytes should be: 00 FF FF FF FF FF FF 00).
+    /// </summary>
+    /// <param name="edid">EDID data (at least 8 bytes)</param>
+    /// <returns>True if header is valid</returns>
+    public static bool ValidateHeader(byte[] edid)
+    {
+        if (edid.Length < 8) return false;
+        
+        return edid[0] == 0x00 &&
+               edid[1] == 0xFF &&
+               edid[2] == 0xFF &&
+               edid[3] == 0xFF &&
+               edid[4] == 0xFF &&
+               edid[5] == 0xFF &&
+               edid[6] == 0xFF &&
+               edid[7] == 0x00;
+    }
+
+    /// <summary>
+    /// Parses EDID version and revision from EDID.
+    /// </summary>
+    /// <param name="edid">EDID data (at least 20 bytes)</param>
+    /// <returns>EDID version information or null if invalid</returns>
+    public static EdidVersion? ParseEdidVersion(byte[] edid)
+    {
+        if (edid.Length < 20) return null;
+
+        try
+        {
+            // EDID version is at bytes 18-19
+            byte major = edid[18];
+            byte minor = edid[19];
+            return new EdidVersion(major, minor);
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Parses video input definition from EDID.
+    /// </summary>
+    /// <param name="edid">EDID data (at least 21 bytes)</param>
+    /// <returns>Video input definition or null if invalid</returns>
+    public static VideoInputDefinition? ParseVideoInputDefinition(byte[] edid)
+    {
+        if (edid.Length < 21) return null;
+
+        try
+        {
+            // Video input definition is at byte 20
+            byte value = edid[20];
+            bool isDigital = (value & 0x80) != 0; // Bit 7
+            return new VideoInputDefinition(isDigital, value);
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Parses supported features from EDID.
+    /// </summary>
+    /// <param name="edid">EDID data (at least 25 bytes)</param>
+    /// <returns>Supported features information or null if invalid</returns>
+    public static SupportedFeatures? ParseSupportedFeatures(byte[] edid)
+    {
+        if (edid.Length < 25) return null;
+
+        try
+        {
+            // Supported features is at byte 24
+            byte value = edid[24];
+            
+            bool dpmsStandby = (value & 0x80) != 0;       // Bit 7
+            bool dpmsSuspend = (value & 0x40) != 0;       // Bit 6
+            bool dpmsActiveOff = (value & 0x20) != 0;     // Bit 5
+            byte displayType = (byte)((value >> 3) & 0x03); // Bits 4-3
+            bool defaultColorSpace = (value & 0x04) != 0; // Bit 2
+            bool preferredTimingMode = (value & 0x02) != 0; // Bit 1
+            bool continuousFrequency = (value & 0x01) != 0; // Bit 0
+
+            // EDID 1.4 redefined bits 4-3 for digital inputs (byte 20 bit 7) as supported color encodings.
+            bool isDigital = (edid[20] & 0x80) != 0;
+            bool isEdid14OrLater = edid[18] > 1 || (edid[18] == 1 && edid[19] >= 4);
+
+            return new SupportedFeatures(
+                dpmsStandby,
+                dpmsSuspend,
+                dpmsActiveOff,
+                displayType,
+                defaultColorSpace,
+                preferredTimingMode,
+                continuousFrequency,
+                value,
+                HasColorEncodingFormats: isDigital && isEdid14OrLater);
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Parses chromaticity coordinates (color points for red, green, blue, and white) from EDID.
+    /// </summary>
+    /// <param name="edid">EDID data (at least 35 bytes)</param>
+    /// <returns>Chromaticity coordinates or null if invalid</returns>
+    public static ChromaticityCoordinates? ParseChromaticity(byte[] edid)
+    {
+        if (edid.Length < 35) return null;
+
+        try
+        {
+            // Chromaticity data is stored in bytes 25-34 (EDID 1.4 section 3.7).
+            // Each coordinate is a 10-bit value: the 8 high bits have their own byte (27-34),
+            // the 2 low bits are packed into byte 25 (Rx Ry Gx Gy) and byte 26 (Bx By Wx Wy).
+            byte rgLow = edid[25];
+            byte bwLow = edid[26];
+
+            int redXRaw = (edid[27] << 2) | ((rgLow >> 6) & 0x03);
+            int redYRaw = (edid[28] << 2) | ((rgLow >> 4) & 0x03);
+            int greenXRaw = (edid[29] << 2) | ((rgLow >> 2) & 0x03);
+            int greenYRaw = (edid[30] << 2) | (rgLow & 0x03);
+            int blueXRaw = (edid[31] << 2) | ((bwLow >> 6) & 0x03);
+            int blueYRaw = (edid[32] << 2) | ((bwLow >> 4) & 0x03);
+            int whiteXRaw = (edid[33] << 2) | ((bwLow >> 2) & 0x03);
+            int whiteYRaw = (edid[34] << 2) | (bwLow & 0x03);
+
+            // Convert 10-bit values to 0.0-1.0 range
+            var red = new ColorPoint(redXRaw / 1024.0, redYRaw / 1024.0);
+            var green = new ColorPoint(greenXRaw / 1024.0, greenYRaw / 1024.0);
+            var blue = new ColorPoint(blueXRaw / 1024.0, blueYRaw / 1024.0);
+            var white = new ColorPoint(whiteXRaw / 1024.0, whiteYRaw / 1024.0);
+
+            return new ChromaticityCoordinates(red, green, blue, white);
+        }
+        catch
+        {
+            return null;
+        }
+    }
+}
