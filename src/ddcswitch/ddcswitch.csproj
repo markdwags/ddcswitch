@@ -1,0 +1,58 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <OutputType>Exe</OutputType>
+        <AssemblyName>ddcswitch</AssemblyName>
+        <RootNamespace>DdcSwitch</RootNamespace>
+        <PublishAot>true</PublishAot>
+        <InvariantGlobalization>false</InvariantGlobalization>
+        <IlcOptimizationPreference>Speed</IlcOptimizationPreference>
+        <IlcGenerateStackTraceData>false</IlcGenerateStackTraceData>
+        <StripSymbols>true</StripSymbols>
+    </PropertyGroup>
+
+    <!-- Extract version from CHANGELOG.md -->
+    <Target Name="SetVersionFromChangelog" BeforeTargets="BeforeBuild;BeforeRebuild">
+        <PropertyGroup>
+            <ChangelogPath>$(RepoRoot)CHANGELOG.md</ChangelogPath>
+        </PropertyGroup>
+        <ReadLinesFromFile File="$(ChangelogPath)" Condition="Exists('$(ChangelogPath)')">
+            <Output TaskParameter="Lines" ItemName="ChangelogLines" />
+        </ReadLinesFromFile>
+        <PropertyGroup>
+            <ChangelogContent>@(ChangelogLines, '%0A')</ChangelogContent>
+        </PropertyGroup>
+        <PropertyGroup>
+            <VersionRegex>(?&lt;=\[)\d+\.\d+\.\d+(?=\])</VersionRegex>
+            <ExtractedVersion>$([System.Text.RegularExpressions.Regex]::Match($(ChangelogContent), $(VersionRegex)).Value)</ExtractedVersion>
+            <Version Condition="'$(ExtractedVersion)' != ''">$(ExtractedVersion)</Version>
+            <Version Condition="'$(ExtractedVersion)' == ''">0.0.0</Version>
+            <AssemblyVersion>$(Version)</AssemblyVersion>
+            <FileVersion>$(Version)</FileVersion>
+            <InformationalVersion>$(Version)</InformationalVersion>
+        </PropertyGroup>
+        <Message Text="Building ddcswitch version: $(Version)" Importance="high" />
+    </Target>
+
+    <ItemGroup>
+        <PackageReference Include="Spectre.Console" Version="0.57.2" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <InternalsVisibleTo Include="ddcswitch.Tests" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <!-- Embed VCP feature data JSON for potential runtime use -->
+        <EmbeddedResource Include="VcpFeatureData.json" />
+        
+        <!-- Mark generated file as auto-generated -->
+        <Compile Update="VcpFeatures\VcpFeature.Generated.cs">
+            <AutoGen>True</AutoGen>
+            <DesignTime>True</DesignTime>
+            <DependentUpon>VcpFeatureData.json</DependentUpon>
+        </Compile>
+    </ItemGroup>
+
+</Project>
+

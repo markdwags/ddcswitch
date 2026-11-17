@@ -8,26 +8,31 @@ ddcswitch is a Windows-only CLI (C#, .NET 10, NativeAOT, Spectre.Console) that c
 
 ```powershell
 .\build.ps1                                   # clean + NativeAOT publish -> dist\ddcswitch.exe
-dotnet build                                  # quick JIT build (no native link)
-dotnet run --project DDCSwitch -- list --trace   # run from source
-dotnet test --project DDCSwitch.Tests         # all unit tests (no monitor needed)
+dotnet build                                  # quick JIT build of ddcswitch.slnx (no native link)
+dotnet run --project src/ddcswitch -- list --trace   # run from source
+dotnet test --project tests/ddcswitch.Tests   # all unit tests (no monitor needed)
 
 # Single class / single test (xUnit v3 on Microsoft.Testing.Platform; wildcards only at start/end)
-dotnet test --project DDCSwitch.Tests --filter-class "DDCSwitch.Tests.DdcRetryPolicyTests"
-dotnet test --project DDCSwitch.Tests --filter-method "*SucceedsOnFirstAttempt*"
+dotnet test --project tests/ddcswitch.Tests --filter-class "DdcSwitch.Tests.DdcRetryPolicyTests"
+dotnet test --project tests/ddcswitch.Tests --filter-method "*SucceedsOnFirstAttempt*"
 
-# After editing DDCSwitch/VcpFeatureData.json (requires python)
+# After editing src/ddcswitch/VcpFeatureData.json (requires python)
 .\tools\Regenerate.ps1
+
+# Chocolatey package for the CHANGELOG version's GitHub release -> dist\ddcswitch.<ver>.nupkg (requires choco)
+.\build-chocolatey.ps1
 ```
+
+Layout: `src/ddcswitch` (the exe), `tests/ddcswitch.Tests`, `chocolatey/` (package templates). Shared MSBuild properties (TFM, RID, nullable, `RepoRoot`) are in `Directory.Build.props`. Folder/project/file names are lowercase `ddcswitch`; C# namespaces are `DdcSwitch`, `DdcSwitch.Commands`, `DdcSwitch.Tests`.
 
 - SDK is pinned in `global.json`; it also opts `dotnet test` into Microsoft.Testing.Platform, so use `--project`, `--filter-class`/`--filter-method` (not VSTest `--filter`).
 - NativeAOT publish needs the VS "Desktop development with C++" workload. If linking fails with `'vswhere.exe' is not recognized`, add `%ProgramFiles(x86)%\Microsoft Visual Studio\Installer` to `PATH`.
 - CI skips the build (and release) for `chore/*` branch PRs and their merges into `main`, and for `chore:` commits on `main`.
-- CI (`.github/workflows/ci-cd.yml`) fails restore on high/critical NuGet advisories (NU1903/NU1904) and smoke-runs `ddcswitch --json version` on the published exe.
+- CI (`.github/workflows/ci-cd.yml`) fails restore on high/critical NuGet advisories (NU1903/NU1904) and smoke-runs `ddcswitch --json version` on the published exe, failing if the reported version doesn't match CHANGELOG.md.
 
 ## Versioning and releases
 
-The version lives only in `CHANGELOG.md`: the first `## [X.Y.Z] - YYYY-MM-DD` heading. The csproj's `SetVersionFromChangelog` target reads it for the assembly version, and CI creates tag `v<version>` + GitHub Release + Chocolatey package when a push to `main` has a CHANGELOG version with no existing tag. Merges that don't bump the version don't release. See `.github/workflows/README.md`.
+The version lives only in `CHANGELOG.md`: the first `## [X.Y.Z] - YYYY-MM-DD` heading. The csproj's `SetVersionFromChangelog` target reads it for the assembly version, and CI creates tag `v<version>` + GitHub Release + Chocolatey package (via `build-chocolatey.ps1 -LocalZip`) when a push to `main` has a CHANGELOG version with no existing tag. Merges that don't bump the version don't release. See `.github/workflows/README.md`.
 
 ## Architecture
 
@@ -52,4 +57,4 @@ Flow: `Program.cs` → `Commands/CommandRouter.Route` strips global flags (`--js
 
 ## Testing
 
-Tests must not require a monitor. `DDCSwitch.Tests/TestHelpers.cs` provides `TestMonitor.Create(...)` (fake hardware ID and a default invalid handle, so no dxva2 calls) and `EdidBuilder` for synthetic 128-byte EDID blocks. The main project exposes internals via `InternalsVisibleTo`. `DdcRetryPolicy` takes an injectable sleep for deterministic retry tests.
+Tests must not require a monitor. `tests/ddcswitch.Tests/TestHelpers.cs` provides `TestMonitor.Create(...)` (fake hardware ID and a default invalid handle, so no dxva2 calls) and `EdidBuilder` for synthetic 128-byte EDID blocks. The main project exposes internals via `InternalsVisibleTo`. `DdcRetryPolicy` takes an injectable sleep for deterministic retry tests.

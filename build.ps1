@@ -5,7 +5,7 @@ Write-Host ""
 
 # Clean previous build
 Write-Host "Cleaning previous build..."
-dotnet clean DDCSwitch\DDCSwitch.csproj -c Release
+dotnet clean src\ddcswitch\ddcswitch.csproj -c Release
 if ($LASTEXITCODE -ne 0) {
     Write-Host "ERROR: Clean failed" -ForegroundColor Red
     exit 1
@@ -14,7 +14,7 @@ Write-Host ""
 
 # Build with NativeAOT
 Write-Host "Building with NativeAOT..."
-dotnet publish DDCSwitch\DDCSwitch.csproj -c Release -r win-x64 --self-contained
+dotnet publish src\ddcswitch\ddcswitch.csproj -c Release -r win-x64 --self-contained
 if ($LASTEXITCODE -ne 0) {
     Write-Host "ERROR: Build failed" -ForegroundColor Red
     exit 1
@@ -29,7 +29,7 @@ if (-not (Test-Path "dist")) {
 
 # Copy the NativeAOT executable
 Write-Host "Copying executable to dist folder..."
-Copy-Item -Path "DDCSwitch\bin\Release\net10.0\win-x64\publish\ddcswitch.exe" -Destination "dist\ddcswitch.exe" -Force
+Copy-Item -Path "src\ddcswitch\bin\Release\net10.0\win-x64\publish\ddcswitch.exe" -Destination "dist\ddcswitch.exe" -Force
 if ($LASTEXITCODE -ne 0) {
     Write-Host "ERROR: Failed to copy executable" -ForegroundColor Red
     exit 1

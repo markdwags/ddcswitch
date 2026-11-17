@@ -22,7 +22,7 @@ env:
   DOTNET_NOLOGO: true
   DOTNET_CLI_TELEMETRY_OPTOUT: true
   DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true
-  PUBLISH_DIR: DDCSwitch/bin/Release/net10.0/win-x64/publish
+  PUBLISH_DIR: src/ddcswitch/bin/Release/net10.0/win-x64/publish
 
 jobs:
   build:
@@ -60,11 +60,11 @@ jobs:
 
       - name: Restore
         # High/critical NuGet advisories fail the build instead of scrolling by as warnings.
-        run: dotnet restore DDCSwitch.sln -r win-x64 "-p:WarningsAsErrors=NU1903%3BNU1904"
+        run: dotnet restore ddcswitch.slnx -r win-x64 "-p:WarningsAsErrors=NU1903%3BNU1904"
 
       - name: Test
         run: >
-          dotnet test --project DDCSwitch.Tests -c Release --no-restore
+          dotnet test --project tests/ddcswitch.Tests -c Release --no-restore
           --results-directory TestResults
           --report-xunit-trx
           --report-xunit-markdown --report-xunit-markdown-filename summary.md
@@ -85,7 +85,7 @@ jobs:
           retention-days: 7
 
       - name: Build Release (NativeAOT)
-        run: dotnet publish DDCSwitch/DDCSwitch.csproj -c Release -r win-x64 --no-restore
+        run: dotnet publish src/ddcswitch/ddcswitch.csproj -c Release -r win-x64 --no-restore
 
       - name: Verify executable
         shell: pwsh
@@ -95,8 +95,13 @@ jobs:
           $size = [math]::Round((Get-Item $exe).Length / 1MB, 2)
           Write-Host "✓ Executable size: $size MB"
           # Smoke test: the AOT binary starts and runs (no monitors are needed for this command).
-          & $exe --json version
+          $output = & $exe --json version
           if ($LASTEXITCODE -ne 0) { Write-Error "ddcswitch.exe version exited with $LASTEXITCODE"; exit 1 }
+          Write-Host $output
+          # The assembly version comes from CHANGELOG.md; 0.0.0 means the csproj couldn't find it.
+          $expected = if ((Get-Content CHANGELOG.md -Raw) -match '\[(\d+\.\d+\.\d+)\]') { $matches[1] } else { '' }
+          $actual = ($output | ConvertFrom-Json).version
+          if ($actual -ne $expected) { Write-Error "Exe reports version '$actual' but CHANGELOG.md says '$expected'"; exit 1 }
 
       - name: Determine version and whether to release
         id: version
@@ -117,7 +122,7 @@ jobs:
       - name: Upload build artifact
         uses: actions/upload-artifact@v7
         with:
-          name: DDCSwitch-build-${{ github.sha }}
+          name: ddcswitch-build-${{ github.sha }}
           path: ${{ env.PUBLISH_DIR }}/ddcswitch.exe
           retention-days: 7
 
@@ -138,7 +143,7 @@ jobs:
       - name: Download build artifact
         uses: actions/download-artifact@v8
         with:
-          name: DDCSwitch-build-${{ github.sha }}
+          name: ddcswitch-build-${{ github.sha }}
           path: artifact/
 
       - name: Package release
@@ -167,22 +172,13 @@ jobs:
       - name: Build Chocolatey package
         shell: pwsh
         run: |
-          $checksum = "${{ steps.package.outputs.checksum }}"
-          (Get-Content chocolatey\ddcswitch.nuspec -Raw) -replace '__VERSION__', $env:VERSION | Set-Content chocolatey\ddcswitch.nuspec -NoNewline
-          # Checksum is embedded in the install script (Chocolatey validation CPMR0073)
-          (Get-Content chocolatey\tools\chocolateyinstall.ps1 -Raw) -replace '__CHECKSUM__', $checksum | Set-Content chocolatey\tools\chocolateyinstall.ps1 -NoNewline
-          (Get-Content chocolatey\tools\VERIFICATION.txt -Raw) -replace '__VERSION__', $env:VERSION -replace '__CHECKSUM__', $checksum | Set-Content chocolatey\tools\VERIFICATION.txt -NoNewline
-
           if (-not (Get-Command choco -ErrorAction SilentlyContinue)) {
             Set-ExecutionPolicy Bypass -Scope Process -Force
             [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072
             iex ((New-Object System.Net.WebClient).DownloadString('https://community.chocolatey.org/install.ps1'))
           }
-
-          Push-Location chocolatey
-          choco pack
-          Pop-Location
-          if (-not (Test-Path "chocolatey/ddcswitch.$env:VERSION.nupkg")) { Write-Error "Failed to create Chocolatey package"; exit 1 }
+          # Same script as local builds; the checksum is of the ZIP this job is about to release.
+          ./build-chocolatey.ps1 -Version $env:VERSION -LocalZip "${{ steps.package.outputs.zip }}" -OutputDir chocolatey-out
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v3
@@ -196,11 +192,11 @@ jobs:
           files: |
             ${{ steps.package.outputs.zip }}
             release/ddcswitch.exe
-            chocolatey/ddcswitch.${{ env.VERSION }}.nupkg
+            chocolatey-out/ddcswitch.${{ env.VERSION }}.nupkg
 
       - name: Upload Chocolatey package
         uses: actions/upload-artifact@v7
         with:
           name: chocolatey-package-${{ env.VERSION }}
-          path: chocolatey/*.nupkg
+          path: chocolatey-out/*.nupkg
           retention-days: 90

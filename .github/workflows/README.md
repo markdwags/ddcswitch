@@ -15,19 +15,21 @@ Don't put a version bump in a chore change: it won't release until a later non-c
 ### `build` job (every run)
 1. Installs the .NET SDK pinned in `/global.json` and restores NuGet packages from cache.
 2. Restores the solution. **High or critical NuGet vulnerability advisories (NU1903/NU1904) fail the build.**
-3. Runs the unit tests (`DDCSwitch.Tests`, xUnit v3 on Microsoft.Testing.Platform) with coverlet coverage.
+3. Runs the unit tests (`tests/ddcswitch.Tests`, xUnit v3 on Microsoft.Testing.Platform) with coverlet coverage.
    The test summary is posted to the job summary page. TRX and Cobertura files are uploaded as the
    `test-results-<sha>` artifact (7 days).
-4. Publishes the NativeAOT `ddcswitch.exe`, checks that it exists, and smoke-runs `ddcswitch --json version`.
+4. Publishes the NativeAOT `ddcswitch.exe`, checks that it exists, and smoke-runs `ddcswitch --json version`
+   (failing if the reported version isn't the CHANGELOG version).
 5. Reads the version from `CHANGELOG.md` and checks whether tag `v<version>` already exists. The job
    summary says whether merging will create a release.
-6. Uploads `ddcswitch.exe` as the `DDCSwitch-build-<sha>` artifact (7 days).
+6. Uploads `ddcswitch.exe` as the `ddcswitch-build-<sha>` artifact (7 days).
 
 ### `release` job (push to `main` with a new version only)
 Runs only when the CHANGELOG version has **no tag yet**. Merges that don't bump the version don't release.
 1. Packages `ddcswitch-<version>-win-x64.zip` (exe, README, LICENSE, EXAMPLES, CHANGELOG) and computes its SHA256.
 2. Extracts that version's section of `CHANGELOG.md` as the release notes.
-3. Fills in the Chocolatey templates (version and checksum) and runs `choco pack`.
+3. Runs `build-chocolatey.ps1 -LocalZip <that zip>` (same script as local builds) to fill in the Chocolatey
+   templates (version and checksum) and `choco pack` into `chocolatey-out/`.
 4. Creates the GitHub Release and tag `v<version>` on the built commit, attaching the ZIP, the exe and the `.nupkg`.
 5. Uploads the `.nupkg` as an artifact (90 days).
 
@@ -64,7 +66,7 @@ assembly version.
 ## Local equivalent
 
 ```powershell
-dotnet restore DDCSwitch.sln -r win-x64
-dotnet test --project DDCSwitch.Tests -c Release
-dotnet publish DDCSwitch/DDCSwitch.csproj -c Release -r win-x64
+dotnet restore ddcswitch.slnx -r win-x64
+dotnet test --project tests/ddcswitch.Tests -c Release
+dotnet publish src/ddcswitch/ddcswitch.csproj -c Release -r win-x64
 ```

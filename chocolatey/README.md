@@ -1,146 +1,71 @@
-﻿# Chocolatey Package for ddcswitch
+﻿# Chocolatey package for ddcswitch
 
-This directory contains the files needed to create a Chocolatey package for ddcswitch.
+Templates for the `ddcswitch` package on the Chocolatey Community Repository. The package does **not**
+embed the exe: `chocolateyinstall.ps1` downloads the GitHub release ZIP, checks its SHA256, and extracts
+it. Chocolatey then creates the `ddcswitch` shim on `PATH` automatically, and removes the shim and files
+on uninstall.
 
-## Structure
+| File | Purpose |
+|------|---------|
+| `ddcswitch.nuspec` | Package metadata. `__VERSION__` = package version. |
+| `tools/chocolateyinstall.ps1` | Downloads + verifies the release ZIP. `__VERSION__` = release version, `__CHECKSUM__` = ZIP SHA256. |
+| `tools/VERIFICATION.txt` | How moderators can verify the download. Same placeholders. |
 
-- `ddcswitch.nuspec` - Package metadata and configuration
-- `tools/chocolateyinstall.ps1` - Installation script (downloads from GitHub releases)
-- `tools/chocolateyuninstall.ps1` - Uninstallation script
-- `tools/VERIFICATION.txt` - Verification instructions and checksums
+Don't fill the placeholders in by hand. `build-chocolatey.ps1` (repo root) does it in a copy under
+`dist/chocolatey-build/` and packs the result. CI uses the same script.
 
-## Building the Package Locally
+## Build locally
 
-**Note**: The version and checksum are automatically populated from `CHANGELOG.md` and GitHub releases.
-
-- **Version**: Set in `ddcswitch.nuspec` as `__VERSION__` placeholder, then passed to PowerShell via `$env:chocolateyPackageVersion`
-- **Checksum**: Embedded directly in `chocolateyinstall.ps1` as `__CHECKSUM__` placeholder (required by Chocolatey validation)
-
-### Prerequisites
-
-1. Install Chocolatey if you haven't already:
-   ```powershell
-   Set-ExecutionPolicy Bypass -Scope Process -Force; [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072; iex ((New-Object System.Net.WebClient).DownloadString('https://community.chocolatey.org/install.ps1'))
-   ```
-
-### Using the Build Script (Recommended)
-
-The easiest way to build the package is using the provided script:
+Requires `choco`. The release (`v<version>`) must already exist on GitHub, since the checksum has to
+match the ZIP users will download.
 
 ```powershell
-# Build from the latest version in CHANGELOG.md (downloads from GitHub releases)
-.\build-chocolatey.ps1
-
-# Build a specific version
-.\build-chocolatey.ps1 -Version 1.0.2
-
-# Build using a local ZIP file (useful before pushing to GitHub)
-.\build-chocolatey.ps1 -LocalZip "dist\ddcswitch-1.0.2-win-x64.zip"
+.\build-chocolatey.ps1                                              # CHANGELOG version -> dist\ddcswitch.<ver>.nupkg
+.\build-chocolatey.ps1 -Version 1.0.5                               # a specific release
+.\build-chocolatey.ps1 -Version 1.0.5 -PackageVersion 1.0.5.20261118  # package fix for the same release
 ```
 
-The script will:
-1. Extract the version from CHANGELOG.md (or use the specified version)
-2. Download the release ZIP from GitHub (or use the local file)
-3. Calculate the SHA256 checksum
-4. Replace placeholders in nuspec and install script
-5. Build the .nupkg package
+## Test the package
 
-### Testing the Package
-
-After building:
+In an **elevated** PowerShell:
 
 ```powershell
-# Install locally
-choco install ddcswitch -s . --force
-
-# Test it works
-ddcswitch --version
-ddcswitch list
-
-# Uninstall
-choco uninstall ddcswitch
+choco install ddcswitch -s .\dist -y --force
+# new shell, so PATH is fresh:
+ddcswitch --json version
+where.exe ddcswitch        # C:\ProgramData\chocolatey\bin\ddcswitch.exe
+choco uninstall ddcswitch -y
 ```
 
+## In CI
 
-## Automated Package Creation
+When a push to `main` releases a new version, the `release` job runs
+`build-chocolatey.ps1 -LocalZip <release zip>` and attaches `ddcswitch.<ver>.nupkg` to the GitHub Release
+(and as a 90-day artifact). It does **not** push to Chocolatey.
 
-The GitHub Actions workflow (`.github/workflows/ci-cd.yml`) automatically:
-1. Detects the version from `CHANGELOG.md` (e.g., `[1.0.2]`)
-2. Calculates the SHA256 checksum of the release ZIP
-3. Replaces `__VERSION__` in `ddcswitch.nuspec` (Chocolatey passes this to scripts via `$env:chocolateyPackageVersion`)
-4. Replaces `__CHECKSUM__` in `chocolateyinstall.ps1`
-5. Creates the `.nupkg` file
-6. Uploads it as an artifact and to the GitHub release
+## Submitting / publishing
 
-**No manual version updates needed!** Just update `CHANGELOG.md` with the new version.
+1. Sign in at https://community.chocolatey.org/ and copy your API key from https://community.chocolatey.org/account.
+2. Once per machine: `choco apikey --key <KEY> --source https://push.chocolatey.org/`
+3. `choco push dist\ddcswitch.<ver>.nupkg --source https://push.chocolatey.org/`
+   (or use the `.nupkg` attached to the GitHub Release).
+4. The package goes through automated validation, verification (a test install) and a virus scan, then
+   human moderation. You get emails with results; fix issues by pushing again.
+   A rejected/unapproved version can be resubmitted with the same version number; an approved one can't,
+   so use `-PackageVersion X.Y.Z.YYYYMMDD` for a package-only fix.
 
-The version flows naturally: `CHANGELOG.md` → `nuspec` → `$env:chocolateyPackageVersion` → PowerShell script.
-3. Creates the `.nupkg` file
-4. Uploads it as an artifact
+Once a few versions have been approved you can automate step 3 with a CI step using a `CHOCO_API_KEY` secret:
 
-## Submitting to Chocolatey
+```yaml
+- name: Push to Chocolatey
+  shell: pwsh
+  run: choco push chocolatey-out/ddcswitch.${{ env.VERSION }}.nupkg --source https://push.chocolatey.org/ --api-key $env:CHOCO_API_KEY
+  env:
+    CHOCO_API_KEY: ${{ secrets.CHOCO_API_KEY }}
+```
 
-### First-Time Submission (Manual)
+## References
 
-1. Create a Chocolatey account at https://community.chocolatey.org/
-2. Download the `.nupkg` artifact from GitHub Actions
-3. Submit via https://community.chocolatey.org/packages/submit
-4. Wait for moderation and approval (typically 1-7 days)
-5. Address any feedback from moderators
-
-### Optional: Automated Submission (After Establishing Trust)
-
-After 2-3 successful manual submissions, you can enable automatic pushing:
-
-1. Get your API key from https://community.chocolatey.org/account
-2. Add it as a GitHub Actions secret: `CHOCO_API_KEY`
-3. Add a step to the workflow to automatically push packages:
-   ```yaml
-   - name: Push to Chocolatey
-     shell: pwsh
-     run: |
-       choco apikey --key $env:CHOCO_API_KEY --source https://push.chocolatey.org/
-       choco push chocolatey/*.nupkg --source https://push.chocolatey.org/
-     env:
-       CHOCO_API_KEY: ${{ secrets.CHOCO_API_KEY }}
-   ```
-
-**Note**: Automatic pushing is not recommended for initial submissions as they require human moderation.
-
-## Package Maintenance
-
-For each new release:
-
-1. **Update `CHANGELOG.md`** with the new version:
-   ```markdown
-   ## [1.0.3] - 2026-01-15
-   
-   ### Added
-   - New feature
-   ```
-
-2. **Push to `main` branch** - triggers the workflow
-
-3. **Wait for GitHub Actions** (~5-10 minutes):
-   - Builds ddcswitch.exe
-   - Creates GitHub release with ZIP
-   - Downloads ZIP and calculates SHA256 checksum
-   - Creates Chocolatey package (`.nupkg`)
-   - Uploads to GitHub release assets and artifacts
-
-4. **Download the `.nupkg` file** from GitHub release assets
-
-5. **Manually submit** to https://community.chocolatey.org/packages/submit
-
-6. **Wait for approval** (faster after first approval)
-
-**That's it!** The version is automatically sourced from `CHANGELOG.md` - no manual file editing needed.
-
-**The version is automatically detected from CHANGELOG.md - no manual file updates needed!**
-
-## Resources
-
-- [Chocolatey Package Creation Guide](https://docs.chocolatey.org/en-us/create/create-packages)
-- [Package Guidelines](https://docs.chocolatey.org/en-us/community-repository/moderation/package-validator)
-- [Submitting Packages](https://docs.chocolatey.org/en-us/community-repository/maintainers/package-submission)
-
+- [Create packages](https://docs.chocolatey.org/en-us/create/create-packages)
+- [Package validator rules](https://docs.chocolatey.org/en-us/community-repository/moderation/package-validator/rules/)
+- [Moderation process](https://docs.chocolatey.org/en-us/community-repository/moderation/)

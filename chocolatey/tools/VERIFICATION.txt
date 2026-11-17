@@ -3,11 +3,14 @@
 Verification is intended to assist the Chocolatey moderators and community
 in verifying that this package's contents are trustworthy.
 
+This package does not embed the binary. chocolateyinstall.ps1 downloads the
+official GitHub release ZIP and verifies its SHA256 checksum before extracting.
+
 Package can be verified like this:
 
 1. Download the following:
 
-   x64: https://github.com/markdwags/DDCSwitch/releases/download/v__VERSION__/ddcswitch-__VERSION__-win-x64.zip
+   x64: https://github.com/markdwags/ddcswitch/releases/download/v__VERSION__/ddcswitch-__VERSION__-win-x64.zip
 
 2. You can use one of the following methods to obtain the SHA256 checksum:
    - Use powershell function 'Get-FileHash'
@@ -15,8 +18,6 @@ Package can be verified like this:
 
    checksum64: __CHECKSUM__
 
-The binary is downloaded directly from the official GitHub releases.
-
 Project source: https://github.com/markdwags/ddcswitch
 Releases: https://github.com/markdwags/ddcswitch/releases
-
+License (MIT): https://github.com/markdwags/ddcswitch/blob/main/LICENSE
