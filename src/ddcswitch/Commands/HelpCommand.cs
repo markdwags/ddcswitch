@@ -62,6 +62,9 @@ internal static class HelpCommand
             "[cyan]toggle[/] [green]<monitor>[/] [blue]<input1>[/] [blue]<input2>[/]",
             "Toggle between two input sources automatically");
         commandsTable.AddRow(
+            "[cyan]toggle[/] [green]<monitor>[/] [blue]<feature>[/] [magenta]<value1> <value2> [[...]][/]",
+            "Cycle a feature through values (first value if current isn't listed; [cyan]--strict[/] errors instead)");
+        commandsTable.AddRow(
             "[cyan]info[/] [green]<monitor>[/]",
             "Show detailed EDID information for a specific monitor");
         commandsTable.AddRow(
@@ -100,6 +103,8 @@ internal static class HelpCommand
         AnsiConsole.MarkupLine("  [grey]$[/] ddcswitch set 1 brightness 75%");
         AnsiConsole.MarkupLine("  [grey]$[/] ddcswitch toggle 0 HDMI1 DP1");
         AnsiConsole.MarkupLine("  [grey]$[/] ddcswitch toggle \"Dell Monitor\" HDMI1 HDMI2");
+        AnsiConsole.MarkupLine("  [grey]$[/] ddcswitch toggle 0 brightness 40% 60% 80%");
+        AnsiConsole.MarkupLine("  [grey]$[/] ddcswitch toggle --strict 0 0x8D 1 2");
         AnsiConsole.MarkupLine("  [grey]$[/] ddcswitch info 0");
         AnsiConsole.MarkupLine("  [grey]$[/] ddcswitch info 0 --json");
 

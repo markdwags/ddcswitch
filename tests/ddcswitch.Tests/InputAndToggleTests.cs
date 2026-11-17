@@ -79,11 +79,128 @@ public class InputAndToggleTests
     }
 
     [Theory]
-    [InlineData(0x11u, 0x0Fu)] // on HDMI1 -> DP1
-    [InlineData(0x0Fu, 0x11u)] // on DP1 -> HDMI1
-    [InlineData(0x12u, 0x11u)] // on neither -> first input
-    public void TogglePicksTheOtherInput(uint current, uint expectedTarget)
+    [InlineData(0x11u, 1)] // on HDMI1 -> DP1
+    [InlineData(0x0Fu, 0)] // on DP1 -> HDMI1
+    [InlineData(0x12u, 0)] // on neither -> first input
+    public void TogglePicksTheOtherInput(uint current, int expectedIndex)
     {
-        Assert.Equal(expectedTarget, ToggleCommand.DetermineTargetInput(current, 0x11, 0x0F));
+        Assert.Equal(expectedIndex, ToggleCommand.DetermineTargetIndex(current, [0x11, 0x0F], strict: false));
+    }
+
+    [Theory]
+    [InlineData(40u, 1)]
+    [InlineData(60u, 2)]
+    [InlineData(80u, 0)] // wraps around
+    [InlineData(55u, 0)] // on none -> first value
+    public void ToggleCyclesThroughThreeValues(uint current, int expectedIndex)
+    {
+        Assert.Equal(expectedIndex, ToggleCommand.DetermineTargetIndex(current, [40, 60, 80], strict: false));
+    }
+
+    [Fact]
+    public void StrictToggle_ReturnsNullWhenCurrentValueIsNotListed()
+    {
+        Assert.Null(ToggleCommand.DetermineTargetIndex(55, [40, 60, 80], strict: true));
+        Assert.Equal(2, ToggleCommand.DetermineTargetIndex(60, [40, 60, 80], strict: true));
+    }
+
+    [Theory]
+    [InlineData("HDMI1", "DP1")]
+    [InlineData("0x11", "0x0F")] // two args stay inputs even though 0x11 is also a VCP code
+    [InlineData("17", "15")]
+    public void TwoValues_AreAlwaysTheInputForm(string a, string b)
+    {
+        Assert.True(ToggleCommand.TryParseArgs(["toggle", "0", a, b], out var request, out var error, out _), error);
+        Assert.Equal(InputSource.VcpInputSource, request!.Feature.Code);
+        Assert.Equal([0x11u, 0x0Fu], request.Values.Select(v => v.Raw));
+        Assert.False(request.Strict);
+    }
+
+    [Fact]
+    public void FeatureForm_ParsesPercentages()
+    {
+        Assert.True(ToggleCommand.TryParseArgs(["toggle", "0", "brightness", "40%", "60%", "80%"], out var request, out var error, out _), error);
+        Assert.Equal(VcpFeature.Brightness.Code, request!.Feature.Code);
+        Assert.Equal([40u, 60u, 80u], request.Values.Select(v => v.Percentage!.Value));
+    }
+
+    [Fact]
+    public void FeatureForm_AcceptsVcpCodeAndRawValues()
+    {
+        Assert.True(ToggleCommand.TryParseArgs(["toggle", "0", "0xEA", "0", "1"], out var request, out var error, out _), error);
+        Assert.Equal(0xEA, request!.Feature.Code);
+        Assert.Equal([0u, 1u], request.Values.Select(v => v.Raw));
+    }
+
+    [Fact]
+    public void ThreeInputsWithoutFeatureName_CycleInputs()
+    {
+        Assert.True(ToggleCommand.TryParseArgs(["toggle", "0", "HDMI1", "DP1", "HDMI2"], out var request, out var error, out _), error);
+        Assert.Equal(InputSource.VcpInputSource, request!.Feature.Code);
+        Assert.Equal([0x11u, 0x0Fu, 0x12u], request.Values.Select(v => v.Raw));
+    }
+
+    [Theory]
+    [InlineData("--strict", "0", "HDMI1", "DP1")]
+    [InlineData("0", "HDMI1", "--STRICT", "DP1")]
+    [InlineData("0", "HDMI1", "DP1", "--strict")]
+    public void StrictFlag_IsAcceptedAnywhere(params string[] rest)
+    {
+        Assert.True(ToggleCommand.TryParseArgs(["toggle", .. rest], out var request, out var error, out _), error);
+        Assert.True(request!.Strict);
+        Assert.Equal(2, request.Values.Count);
+    }
+
+    [Fact]
+    public void FeatureWithOneValue_AsksForTwoValues()
+    {
+        Assert.False(ToggleCommand.TryParseArgs(["toggle", "0", "brightness", "50"], out _, out var error, out _));
+        Assert.Contains("at least two values for 'brightness'", error);
+    }
+
+    [Fact]
+    public void DuplicateInputs_AreRejectedBeforeAnyMonitorIo()
+    {
+        Assert.False(ToggleCommand.TryParseArgs(["toggle", "0", "hdmi1", "0x11"], out _, out var error, out _));
+        Assert.Contains("must be different", error);
+    }
+
+    [Fact]
+    public void UnknownFeature_IsRejected()
+    {
+        Assert.False(ToggleCommand.TryParseArgs(["toggle", "0", "sparkle", "1", "2"], out _, out var error, out _));
+        Assert.Contains("Invalid feature 'sparkle'", error);
+    }
+
+    [Fact]
+    public void ReadOnlyFeature_IsRejected()
+    {
+        var readOnly = VcpFeature.AllFeatures.First(f => f.Type == VcpFeatureType.ReadOnly);
+        Assert.False(ToggleCommand.TryParseArgs(["toggle", "0", $"0x{readOnly.Code:X2}", "1", "2"], out _, out var error, out _));
+        Assert.Contains("read-only", error);
+    }
+
+    [Fact]
+    public void ResolveRawValues_ConvertsPercentagesWithMonitorMax()
+    {
+        Assert.True(ToggleCommand.TryParseArgs(["toggle", "0", "brightness", "40%", "80%"], out var request, out _, out _));
+        Assert.True(ToggleCommand.TryResolveRawValues(request!.Feature, request.Values, 50, out var raws, out var error), error);
+        Assert.Equal([20u, 40u], raws);
+    }
+
+    [Fact]
+    public void ResolveRawValues_RejectsPercentagesThatCollideOnSmallMax()
+    {
+        Assert.True(ToggleCommand.TryParseArgs(["toggle", "0", "brightness", "40%", "41%"], out var request, out _, out _));
+        Assert.False(ToggleCommand.TryResolveRawValues(request!.Feature, request.Values, 10, out _, out var error));
+        Assert.Contains("must be different", error);
+    }
+
+    [Fact]
+    public void ResolveRawValues_RejectsRawValuesAboveMax()
+    {
+        Assert.True(ToggleCommand.TryParseArgs(["toggle", "0", "0xEA", "0", "200"], out var request, out _, out _));
+        Assert.False(ToggleCommand.TryResolveRawValues(request!.Feature, request.Values, 100, out _, out var error));
+        Assert.NotNull(error);
     }
 }

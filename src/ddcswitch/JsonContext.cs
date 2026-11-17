@@ -8,6 +8,7 @@ namespace DdcSwitch;
 [JsonSerializable(typeof(GetVcpResponse))]
 [JsonSerializable(typeof(SetVcpResponse))]
 [JsonSerializable(typeof(ToggleInputResponse))]
+[JsonSerializable(typeof(ToggleVcpResponse))]
 [JsonSerializable(typeof(VcpScanResponse))]
 [JsonSerializable(typeof(VcpFeatureInfo))]
 [JsonSerializable(typeof(VcpFeatureType))]
@@ -42,6 +43,16 @@ internal record ToggleInputResponse(
     uint ToInputCode,
     string? Warning = null,
     string? ErrorMessage = null);
+internal record ToggleVcpResponse(
+    bool Success,
+    MonitorReference Monitor,
+    string FeatureName,
+    uint FromValue,
+    uint ToValue,
+    uint MaxValue,
+    uint? FromPercentage = null,
+    uint? ToPercentage = null,
+    string? Warning = null);
 internal record VcpScanResponse(bool Success, MonitorReference Monitor, List<VcpFeatureInfo> Features, string? ErrorMessage = null);
 
 // Data models

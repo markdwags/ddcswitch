@@ -45,4 +45,21 @@ public class JsonContextTests
         Assert.Equal(0, root.GetProperty("monitor").GetProperty("index").GetInt32());
         Assert.False(root.TryGetProperty("errorMessage", out _));
     }
+
+    [Fact]
+    public void ToggleVcpResponse_UsesStableFieldNames_AndOmitsNulls()
+    {
+        var response = new ToggleVcpResponse(true, new MonitorReference(0, "Dell", @"\\.\DISPLAY1"), "VCP_EA", 0, 1, 1);
+        string json = JsonSerializer.Serialize(response, JsonContext.Default.ToggleVcpResponse);
+
+        using var doc = JsonDocument.Parse(json);
+        var root = doc.RootElement;
+        Assert.True(root.GetProperty("success").GetBoolean());
+        Assert.Equal("VCP_EA", root.GetProperty("featureName").GetString());
+        Assert.Equal(0u, root.GetProperty("fromValue").GetUInt32());
+        Assert.Equal(1u, root.GetProperty("toValue").GetUInt32());
+        Assert.Equal(1u, root.GetProperty("maxValue").GetUInt32());
+        Assert.False(root.TryGetProperty("fromPercentage", out _));
+        Assert.False(root.TryGetProperty("warning", out _));
+    }
 }

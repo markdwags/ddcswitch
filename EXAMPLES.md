@@ -41,19 +41,23 @@ Accepted input names, case-insensitive:
 
 Composite, S-Video, component and tuner inputs are also recognised. For a monitor that uses non-standard codes (common for USB-C or a third HDMI port), use the hex code. See [Finding a monitor's input codes](#finding-a-monitors-input-codes).
 
-### Toggling between two inputs
+### Toggling between inputs
 
 ```powershell
 ddcswitch toggle 0 HDMI1 DP1
 ddcswitch toggle "LG ULTRAGEAR" HDMI1 HDMI2
+ddcswitch toggle 0 HDMI1 DP1 HDMI2         # cycle through three inputs
+ddcswitch toggle 0 input 0x11 0x0F 0x1B    # cycle by hex code (name the feature, see below)
 ```
 
-`toggle` reads the current input and switches to the other one of the pair:
+`toggle` reads the current input and switches to the next one in the list, wrapping around:
 
 - On `HDMI1`: switches to `DP1`.
-- On `DP1`: switches to `HDMI1`.
-- On neither: switches to the first input (`HDMI1`) and prints a warning.
+- On `DP1`: switches to `HDMI1` (or to `HDMI2` in the three-input example).
+- On none of them: switches to the first input (`HDMI1`) and prints a warning. Add `--strict` to fail instead and leave the input alone.
 - If the current input can't be read, `toggle` fails instead of guessing. Use `set … input` in that case.
+
+Two arguments after the monitor are always read as inputs, so `toggle 0 0x11 0x0F` toggles HDMI1 and DP1. With three or more arguments, the first one is read as a feature when it can be one, and `0x11` is also a VCP code. To cycle three or more inputs by hex code, put `input` first.
 
 This makes `toggle` the natural command to put behind a single hotkey. See [Integrations](#integrations).
 
@@ -94,6 +98,23 @@ ddcswitch get 0 color-preset       # e.g. 5; what each preset number means is mo
 ```
 
 Monitors implement only some of these. Unsupported features fail with a "not supported" error and change nothing.
+
+### Toggling and cycling any feature
+
+`toggle` works with any feature that can be read and written. Give the feature, then two or more values:
+
+```powershell
+ddcswitch toggle 0 brightness 30% 80%          # day/night brightness on one hotkey
+ddcswitch toggle 0 brightness 25% 50% 75% 100% # step through four levels
+ddcswitch toggle 0 mute 1 2                    # mute / unmute
+ddcswitch toggle 0 color-preset 5 6            # preset numbers are monitor-specific
+ddcswitch toggle 0 0xEA 0 1                    # any VCP code
+ddcswitch toggle --strict 0 mute 1 2           # fail if the current value is something else
+```
+
+Values work the same way as in `set`: `%` values are scaled to the monitor's maximum, and raw values above it are rejected. The rules are the same as for inputs: switch to the next value and wrap around. When the current value isn't in the list, switch to the first value with a warning, or fail with `--strict`.
+
+Percentages are matched by the raw value they convert to on that monitor. If you change brightness from the monitor's own menu to a level that isn't in the list, the next `toggle` goes back to the first value. If two percentages convert to the same raw value (possible on monitors with a small maximum), `toggle` reports an error.
 
 > **Careful with the reset codes.** `restore-defaults` (`0x04`, alias `factory-reset`), `restore-brightness-contrast` (`0x05`) and `restore-color` (`0x08`) reset the monitor's settings immediately, with no confirmation:
 >
@@ -194,7 +215,24 @@ Add `--json` to any command for machine-readable output on stdout. Diagnostic `-
 }
 ```
 
-A `"warning"` field is added when the monitor was on neither input.
+A `"warning"` field is added when the monitor was on none of the inputs.
+
+For any feature other than input, `ddcswitch toggle 0 brightness 30% 80% --json` returns:
+
+```json
+{
+  "success": true,
+  "monitor": { "index": 0, "name": "Acer Technologies VG270U P", "deviceName": "\\\\.\\DISPLAY1", "isPrimary": true },
+  "featureName": "brightness",
+  "fromValue": 30,
+  "toValue": 80,
+  "maxValue": 100,
+  "fromPercentage": 30,
+  "toPercentage": 80
+}
+```
+
+`fromValue`, `toValue` and `maxValue` are raw values. `fromPercentage`/`toPercentage` only appear for features that support percentages, and `"warning"` appears when the current value wasn't in the list. With `--strict` and an unlisted value, you get the error shape below and exit code `1`.
 
 `ddcswitch info 0 --json` returns `monitor`, `status`, `currentInput`, `currentInputCode` and an `edid` object (`manufacturerName`, `modelName`, `serialNumber`, `productCode`, `manufactureYear`, `features.displayType`, `chromaticity.red|green|blue|white.x|y`, and more).
 
@@ -352,6 +390,12 @@ if ddc("get", 0, "input")["rawValue"] != 0x11:
 ^!1:: Run("ddcswitch.exe set 0 input HDMI1", , "Hide")
 ^!2:: Run("ddcswitch.exe set 0 input DP1", , "Hide")
 
+; Ctrl+Alt+B: cycle monitor 0's brightness through three levels
+^!b:: Run("ddcswitch.exe toggle 0 brightness 30% 60% 90%", , "Hide")
+
+; Ctrl+Alt+M: mute / unmute monitor 0's speakers
+^!m:: Run("ddcswitch.exe toggle 0 mute 1 2", , "Hide")
+
 ; Ctrl+Alt+Up / Down: brightness presets on every monitor
 ^!Up:: {
     Loop 3
@@ -371,6 +415,7 @@ Add a **System → Open** action for each button. Enter the full path and the ar
 
 ```text
 C:\Tools\ddcswitch.exe toggle 0 HDMI1 DP1
+C:\Tools\ddcswitch.exe toggle 0 brightness 30% 60% 90%
 C:\Tools\ddcswitch.exe set 0 brightness 80%
 ```
 
@@ -427,10 +472,11 @@ function ddc-list  { ddcswitch list --verbose }
 function ddc-hdmi  { ddcswitch set 0 input HDMI1 }
 function ddc-dp    { ddcswitch set 0 input DP1 }
 function ddc-swap  { ddcswitch toggle 0 HDMI1 DP1 }
+function ddc-dim   { ddcswitch toggle 0 brightness 30% 80% }
 function ddc-bright([ValidateRange(0, 100)][int]$Level) { ddcswitch set 0 brightness "$Level%" }
 ```
 
-Then run `ddc-swap` or `ddc-bright 40`.
+Then run `ddc-swap`, `ddc-dim` or `ddc-bright 40`.
 
 ### Windows Terminal
 
