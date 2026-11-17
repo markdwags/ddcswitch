@@ -2,6 +2,18 @@
 
 All notable changes to ddcswitch will be documented in this file.
 
+## [1.1.0] - 2026-11-17
+
+### Added
+- `toggle` works with any read/write feature, not just input:
+  `ddcswitch toggle 0 brightness 40% 80%` or `ddcswitch toggle 0 0xEA 0 1` ([#12](https://github.com/markdwags/ddcswitch/issues/12))
+- `toggle` cycles through three or more values, e.g. `ddcswitch toggle 0 brightness 40% 60% 80%` or
+  `ddcswitch toggle 0 HDMI1 DP1 HDMI2`
+- `toggle --strict` reports an error instead of switching to the first value when the current value isn't
+  one of the listed values
+- `toggle --json` for non-input features returns `featureName`, `fromValue`, `toValue`, `maxValue` and,
+  for percentage features, `fromPercentage`/`toPercentage`. Input toggles keep their existing JSON shape
+
 ## [1.0.5] - 2026-11-04
 
 ### Fixed

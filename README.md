@@ -35,12 +35,16 @@ ddcswitch get 0 brightness              # read a feature
 ddcswitch set 0 brightness 75%          # write a feature
 ddcswitch set 0 input HDMI1             # switch input
 ddcswitch toggle 0 HDMI1 DP1            # flip between two inputs (great for hotkeys)
+ddcswitch toggle 0 brightness 40% 80%   # flip any feature between values
+ddcswitch toggle 0 input HDMI1 DP1 DP2  # cycle through three or more values
 ddcswitch get 0 0x10                    # raw VCP code
 ddcswitch get 0                         # scan all VCP codes on one monitor
 ddcswitch get all                       # scan every monitor
 ```
 
 **Selecting a monitor:** use its index from `list`, or part of its name, model, hardware ID or display device, e.g. `toggle VG270U HDMI1 DP1` or `get DISPLAY2 input`.
+
+**Toggling:** `toggle` reads the current value and switches to the next one in the list, wrapping around. If the current value isn't in the list (say brightness was changed from the monitor's menu), it switches to the first value; add `--strict` to fail instead. Percentages are matched by the raw value they convert to on that monitor. Two arguments after the monitor are always read as inputs (`toggle 0 HDMI1 DP1`, `toggle 0 0x11 0x0F`); name the feature for anything else.
 
 **Inputs:** `HDMI1`, `HDMI2`, `DP1`, `DP2`, `DVI1`, `DVI2`, `VGA1`, `VGA2`, or a hex code like `0x11`.
 
@@ -52,6 +56,7 @@ ddcswitch get all                       # scan every monitor
 |------|--------|
 | `--json` | Machine-readable output for scripts |
 | `--verbose` | Extra EDID and brightness/contrast columns in `list` |
+| `--strict` | `toggle` fails instead of switching to the first value when the current value isn't listed |
 | `--trace` | Log every DDC/CI call with error code and timing to stderr (or set `DDCSWITCH_TRACE=1`) |
 
 Set `NO_COLOR=1` for plain output without colors or icons.
