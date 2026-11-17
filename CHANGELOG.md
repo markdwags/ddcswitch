@@ -2,6 +2,16 @@
 
 All notable changes to ddcswitch will be documented in this file.
 
+## [1.1.1] - 2026-11-17
+
+### Fixed
+- Symbols and emoji (`●`, `✓`, panel icons) rendered as `?` in consoles using a legacy code page such as 437.
+  ddcswitch now switches the console to UTF-8 while it runs and restores the original code page on exit
+- The `list` overview panel border was misaligned by one column because of an emoji whose width the
+  table renderer measured wrongly; the same fix applies to the `set` panel and the VCP scan table
+- The `list` overview showed `Primary: 1` (the number of primary monitors), which read like a monitor index.
+  It now shows the primary monitor's index, e.g. `Primary: 0 ●`
+
 ## [1.1.0] - 2026-11-17
 
 ### Added

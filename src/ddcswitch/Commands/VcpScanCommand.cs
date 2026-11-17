@@ -281,7 +281,7 @@ internal static class VcpScanCommand
                 // Add icon for common features
                 name = feature.Code switch
                 {
-                    0x10 => $"☀️  {feature.Name}",
+                    0x10 => $"🔆 {feature.Name}",
                     0x12 => $"🎨 {feature.Name}",
                     0x60 => $"📺 {feature.Name}",
                     0x62 => $"🔊 {feature.Name}",
