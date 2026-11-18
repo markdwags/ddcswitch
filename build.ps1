@@ -29,7 +29,7 @@ if (-not (Test-Path "dist")) {
 
 # Copy the NativeAOT executable
 Write-Host "Copying executable to dist folder..."
-Copy-Item -Path "src\ddcswitch\bin\Release\net10.0\win-x64\publish\ddcswitch.exe" -Destination "dist\ddcswitch.exe" -Force
+Copy-Item -Path "src\ddcswitch\bin\Release\net11.0\win-x64\publish\ddcswitch.exe" -Destination "dist\ddcswitch.exe" -Force
 if ($LASTEXITCODE -ne 0) {
     Write-Host "ERROR: Failed to copy executable" -ForegroundColor Red
     exit 1

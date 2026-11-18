@@ -3,7 +3,7 @@
 [![GitHub Release](https://img.shields.io/github/v/release/markdwags/ddcswitch)](https://github.com/markdwags/ddcswitch/releases)
 [![License](https://img.shields.io/github/license/markdwags/ddcswitch)](https://github.com/markdwags/ddcswitch/blob/main/LICENSE)
 [![Platform](https://img.shields.io/badge/platform-Windows-blue)](https://github.com/markdwags/ddcswitch)
-[![.NET](https://img.shields.io/badge/.NET-10.0-512BD4)](https://dotnet.microsoft.com/)
+[![.NET](https://img.shields.io/badge/.NET-11.0-512BD4)](https://dotnet.microsoft.com/)
 
 A Windows command-line tool to control monitors over DDC/CI: switch inputs, set brightness and contrast, and read or write any VCP feature without touching the monitor's buttons. Ships as a single NativeAOT executable with no .NET runtime dependency.
 
@@ -17,7 +17,7 @@ choco install ddcswitch
 
 Or download `ddcswitch.exe` from [Releases](../../releases) and put it on your `PATH`.
 
-**Build from source** (.NET SDK 10.0.403 or later, as pinned in `global.json`, and the Visual Studio "Desktop development with C++" workload):
+**Build from source** (.NET SDK 11.0.100 or later, as pinned in `global.json`, and the Visual Studio "Desktop development with C++" workload):
 
 ```powershell
 git clone https://github.com/markdwags/ddcswitch.git
