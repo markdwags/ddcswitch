@@ -2,6 +2,13 @@
 
 All notable changes to ddcswitch will be documented in this file.
 
+## [1.1.2] - 2026-11-18
+
+### Fixed
+- ddcswitch could crash at startup with `Cannot get symbol u_charsToUChars from libicuuc` / `Error: 127`
+  on systems with a missing or incompatible ICU library (seen on Windows 7) ([#8](https://github.com/markdwags/ddcswitch/issues/8)).
+  ddcswitch no longer loads ICU; it uses invariant globalization, which also makes the executable smaller
+
 ## [1.1.1] - 2026-11-17
 
 ### Fixed
