@@ -5,7 +5,8 @@
         <AssemblyName>ddcswitch</AssemblyName>
         <RootNamespace>DdcSwitch</RootNamespace>
         <PublishAot>true</PublishAot>
-        <InvariantGlobalization>false</InvariantGlobalization>
+        <!-- No ICU: a missing or incompatible icu.dll (e.g. third-party copy in System32 on Windows 7) aborts the runtime. -->
+        <InvariantGlobalization>true</InvariantGlobalization>
         <IlcOptimizationPreference>Speed</IlcOptimizationPreference>
         <IlcGenerateStackTraceData>false</IlcGenerateStackTraceData>
         <StripSymbols>true</StripSymbols>
