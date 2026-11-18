@@ -369,13 +369,13 @@ internal static class SetCommand
             {
                 // Display percentage for brightness/contrast
                 displayValue = $"[bold green]{percentageValue}%[/] [dim](raw: {setValue})[/]";
-                featureIcon = feature.Code == VcpFeature.Brightness.Code ? "☀️" : "🎨";
+                featureIcon = feature.Code == VcpFeature.Brightness.Code ? "🔆" : "🎨";
             }
             else
             {
                 // Display raw value for unknown VCP codes
                 displayValue = $"[bold green]{setValue}[/]";
-                featureIcon = "⚙️";
+                featureIcon = "🔧";
             }
 
             var successPanel = new Panel(

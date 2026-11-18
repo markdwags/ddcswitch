@@ -111,14 +111,17 @@ internal static class ListCommand
     private static void OutputTableList(IReadOnlyList<Monitor> monitors, List<Probe> probes, bool verboseOutput)
     {
         int ddcciCount = probes.Count(p => p.Status == DdcStatus.Ok);
-        int primaryCount = monitors.Count(m => m.IsPrimary);
+        var primary = monitors.FirstOrDefault(m => m.IsPrimary);
+        string primaryText = primary is null
+            ? "[dim]none[/]"
+            : $"[cyan]{primary.Index}[/] [yellow]●[/]";
 
         var summaryPanel = new Panel(
             $"[bold white]Total Monitors:[/] [cyan]{monitors.Count}[/]  " +
             $"[bold white]DDC/CI Capable:[/] [green]{ddcciCount}[/]  " +
-            $"[bold white]Primary:[/] [yellow]{primaryCount}[/]")
+            $"[bold white]Primary:[/] {primaryText}")
         {
-            Header = new PanelHeader("[bold cyan]🖥️  Monitor Overview[/]", Justify.Left),
+            Header = new PanelHeader("[bold cyan]💻 Monitor Overview[/]", Justify.Left),
             Border = BoxBorder.Rounded,
             BorderStyle = new Style(Color.Cyan)
         };
