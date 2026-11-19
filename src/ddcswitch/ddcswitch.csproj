@@ -4,6 +4,8 @@
         <OutputType>Exe</OutputType>
         <AssemblyName>ddcswitch</AssemblyName>
         <RootNamespace>DdcSwitch</RootNamespace>
+        <!-- Generated from ddcswitch-icon.svg (16-256 px). -->
+        <ApplicationIcon>ddcswitch.ico</ApplicationIcon>
         <PublishAot>true</PublishAot>
         <!-- No ICU: a missing or incompatible icu.dll (e.g. third-party copy in System32 on Windows 7) aborts the runtime. -->
         <InvariantGlobalization>true</InvariantGlobalization>

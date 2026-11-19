@@ -2,6 +2,12 @@
 
 All notable changes to ddcswitch will be documented in this file.
 
+## [1.1.3] - 2026-11-18
+
+### Added
+- `ddcswitch.exe` has an application icon, shown in Explorer, Task Manager, shortcuts and Stream Deck
+- The Chocolatey package has an icon
+
 ## [1.1.2] - 2026-11-18
 
 ### Fixed
