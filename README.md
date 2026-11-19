@@ -1,4 +1,6 @@
-﻿# ddcswitch
+﻿<img src="src/ddcswitch/ddcswitch-icon.svg" alt="" width="112" align="right">
+
+# ddcswitch
 
 [![GitHub Release](https://img.shields.io/github/v/release/markdwags/ddcswitch)](https://github.com/markdwags/ddcswitch/releases)
 [![License](https://img.shields.io/github/license/markdwags/ddcswitch)](https://github.com/markdwags/ddcswitch/blob/main/LICENSE)

@@ -8,6 +8,7 @@
     <title>ddcswitch - Monitor Control via DDC/CI</title>
     <authors>markdwags</authors>
     <projectUrl>https://github.com/markdwags/ddcswitch</projectUrl>
+    <iconUrl>https://cdn.jsdelivr.net/gh/markdwags/ddcswitch@main/src/ddcswitch/ddcswitch-icon.svg</iconUrl>
     <projectSourceUrl>https://github.com/markdwags/ddcswitch</projectSourceUrl>
     <copyright>Copyright (c) 2026 ddcswitch Contributors</copyright>
     <licenseUrl>https://github.com/markdwags/ddcswitch/blob/main/LICENSE</licenseUrl>
