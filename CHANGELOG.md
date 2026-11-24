@@ -2,6 +2,13 @@
 
 All notable changes to ddcswitch will be documented in this file.
 
+## [1.1.4] - 2026-11-24
+
+### Changed
+- Releases are published to the Chocolatey Community Repository automatically (`choco install ddcswitch`)
+- The Chocolatey package no longer includes `tools/VERIFICATION.txt`; it downloads the release zip and
+  embeds no binary
+
 ## [1.1.3] - 2026-11-18
 
 ### Added
