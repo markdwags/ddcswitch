@@ -2,14 +2,14 @@
 
 Templates for the `ddcswitch` package on the Chocolatey Community Repository. The package does **not**
 embed the exe: `chocolateyinstall.ps1` downloads the GitHub release ZIP, checks its SHA256, and extracts
-it. Chocolatey then creates the `ddcswitch` shim on `PATH` automatically, and removes the shim and files
+it. Because nothing is embedded, there is no `tools/VERIFICATION.txt` (Chocolatey only wants one for
+packages that embed binaries). Chocolatey then creates the `ddcswitch` shim on `PATH` automatically, and removes the shim and files
 on uninstall.
 
 | File | Purpose |
 |------|---------|
 | `ddcswitch.nuspec` | Package metadata. `__VERSION__` = package version. |
 | `tools/chocolateyinstall.ps1` | Downloads + verifies the release ZIP. `__VERSION__` = release version, `__CHECKSUM__` = ZIP SHA256. |
-| `tools/VERIFICATION.txt` | How moderators can verify the download. Same placeholders. |
 
 Don't fill the placeholders in by hand. `build-chocolatey.ps1` (repo root) does it in a copy under
 `dist/chocolatey-build/` and packs the result. CI uses the same script.
@@ -41,7 +41,10 @@ choco uninstall ddcswitch -y
 
 When a push to `main` releases a new version, the `release` job runs
 `build-chocolatey.ps1 -LocalZip <release zip>` and attaches `ddcswitch.<ver>.nupkg` to the GitHub Release
-(and as a 90-day artifact). It does **not** push to Chocolatey.
+(and as a 90-day artifact). It then pushes that `.nupkg` to Chocolatey using the `CHOCO_API_KEY`
+repository secret (`gh secret set CHOCO_API_KEY`, or Settings → Secrets and variables → Actions). The push
+runs after the GitHub Release is created, because Chocolatey's verifier downloads the release ZIP. If the
+secret isn't set, the step logs a warning and skips. The release still goes out.
 
 ## Submitting / publishing
 
@@ -54,15 +57,8 @@ When a push to `main` releases a new version, the `release` job runs
    A rejected/unapproved version can be resubmitted with the same version number; an approved one can't,
    so use `-PackageVersion X.Y.Z.YYYYMMDD` for a package-only fix.
 
-Once a few versions have been approved you can automate step 3 with a CI step using a `CHOCO_API_KEY` secret:
-
-```yaml
-- name: Push to Chocolatey
-  shell: pwsh
-  run: choco push chocolatey-out/ddcswitch.${{ env.VERSION }}.nupkg --source https://push.chocolatey.org/ --api-key $env:CHOCO_API_KEY
-  env:
-    CHOCO_API_KEY: ${{ secrets.CHOCO_API_KEY }}
-```
+CI does step 3 for every release (see [In CI](#in-ci)). Push by hand only as a fallback: when the CI push
+failed, or for a package-only fix (`-PackageVersion X.Y.Z.YYYYMMDD`).
 
 ## References
 

@@ -194,6 +194,21 @@ jobs:
             release/ddcswitch.exe
             chocolatey-out/ddcswitch.${{ env.VERSION }}.nupkg
 
+      # After the GitHub Release: Chocolatey's verifier test-installs the package, which downloads
+      # the release ZIP. A missing secret warns and skips rather than failing the release.
+      - name: Push to Chocolatey
+        shell: pwsh
+        env:
+          CHOCO_API_KEY: ${{ secrets.CHOCO_API_KEY }}
+        run: |
+          if (-not $env:CHOCO_API_KEY) {
+            Write-Host "::warning::CHOCO_API_KEY secret is not set; skipped pushing to Chocolatey."
+            exit 0
+          }
+          choco push "chocolatey-out/ddcswitch.$env:VERSION.nupkg" --source https://push.chocolatey.org/ --api-key $env:CHOCO_API_KEY --limit-output
+          if ($LASTEXITCODE -ne 0) { Write-Error "choco push failed with exit code $LASTEXITCODE"; exit 1 }
+          "Pushed **ddcswitch $env:VERSION** to Chocolatey (pending moderation)." >> $env:GITHUB_STEP_SUMMARY
+
       - name: Upload Chocolatey package
         uses: actions/upload-artifact@v7
         with:

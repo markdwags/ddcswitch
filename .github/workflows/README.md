@@ -31,7 +31,10 @@ Runs only when the CHANGELOG version has **no tag yet**. Merges that don't bump 
 3. Runs `build-chocolatey.ps1 -LocalZip <that zip>` (same script as local builds) to fill in the Chocolatey
    templates (version and checksum) and `choco pack` into `chocolatey-out/`.
 4. Creates the GitHub Release and tag `v<version>` on the built commit, attaching the ZIP, the exe and the `.nupkg`.
-5. Uploads the `.nupkg` as an artifact (90 days).
+5. Pushes the `.nupkg` to the Chocolatey Community Repository with the `CHOCO_API_KEY` repository secret.
+   This runs after the GitHub Release exists, because Chocolatey's verifier downloads the release ZIP. If the
+   secret isn't set, the step warns and skips. The version then waits for Chocolatey moderation.
+6. Uploads the `.nupkg` as an artifact (90 days).
 
 Only this job has `contents: write`. The rest of the workflow is read-only.
 
@@ -58,6 +61,11 @@ assembly version.
 
 - **"Could not find version in CHANGELOG.md"**: the first version heading must look like `## [X.Y.Z] - YYYY-MM-DD`.
 - **Release didn't run after a merge**: the version's tag already exists. Bump the version in `CHANGELOG.md`.
+- **"CHOCO_API_KEY secret is not set" warning**: add the secret (`gh secret set CHOCO_API_KEY`, key from
+  https://community.chocolatey.org/account), then push the `.nupkg` from the GitHub Release by hand (see
+  `chocolatey/README.md`).
+- **Push to Chocolatey failed**: the GitHub Release already exists. Fix the cause (for example an expired
+  key) and use **Re-run failed jobs**, or push the release's `.nupkg` by hand.
 - **NU1903 / NU1904 restore error**: a package (often the SDK-provided ILCompiler) has a known vulnerability.
   Update the SDK in `global.json` or the package version.
 - **NativeAOT link fails locally with `'vswhere.exe' is not recognized`**: add

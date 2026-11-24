@@ -93,7 +93,6 @@ try {
     $values = @{ '__VERSION__' = $Version; '__CHECKSUM__' = $checksum }
     Update-Placeholders (Join-Path $workDir 'ddcswitch.nuspec') @{ '__VERSION__' = $PackageVersion }
     Update-Placeholders (Join-Path $workDir 'tools\chocolateyinstall.ps1') $values
-    Update-Placeholders (Join-Path $workDir 'tools\VERIFICATION.txt') $values
 
     if (-not (Get-Command choco -ErrorAction SilentlyContinue)) { throw 'choco is not installed (https://chocolatey.org/install)' }
     $nupkg = Join-Path $OutputDir "ddcswitch.$PackageVersion.nupkg"
